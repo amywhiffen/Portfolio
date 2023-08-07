@@ -1,0 +1,216 @@
+---
+title: "Problem Set 4 - Part B"
+output: html_document
+---
+
+```{r, echo = FALSE}
+library("quanteda", quietly = TRUE, warn.conflicts = FALSE, verbose = FALSE)
+```
+
+### Clustering methods
+
+#### 1. **Distance matrixes and hierarchical clustering.**
+
+Suppose that we have four observations, for which we compute a dissimilarity matrix, given by
+
+$$\left[ \begin{array}{ccc}
+        & 0.3 & 0.4 & 0.7 \\
+        0.3 &  & 0.5 & 0.8 \\
+        0.4 & 0.5 &  & 0.45 \\
+        0.7 & 0.8 & 0.45 &
+            \end{array} \right]$$
+
+For instance, the dissimilarity (distance) between the first and second observations is 0.3, and the dissimilarity (distance) between the second and fourth observations is 0.8.
+
+1.a) On the basis of this dissimilarity matrix, sketch the dendrogram that results from hierarchically clustering these four observations. Use the same set of steps outlined in the lecture slides.
+
+Include a graphic (fine to snap a photo of the drawing using your phone, or draw any other way).
+
+**For this exercise we used the hierarchical clustering algorithm. We started by considering each point as its own cluster. The steps we took are the following: first we found the two clusters with the closest distance, then calculated the centre of the new cluster they formed, then searched for the next two closest clusters, and so on, until there were only two clusters left.**
+
+**As we had the distances from each point to every other point, we decided to set their coordinates in a 3 dimensional plane. We set point A with coordinates (0, 0, 0). From this, we calculated the rest of the coordinates of points B, C and D.**
+
+```{r}
+knitr::include_graphics("B-1a.jpg")
+```
+
+
+1.b) Now export the distances to R and plot the dendrogram using R's built-in functions. Compare your results.  
+
+```{r}
+# A using distance matrix
+
+# create matrix
+m <- cbind(c(0, 0.3, 0.4, 0.7), 
+           c(0.3, 0, 0.5, 0.8), 
+           c(0.4, 0.5, 0, 0.45), 
+           c(0.7, 0.8, 0.45, 0))
+colnames(m) <- c("A", "B", "C", "D") 
+rownames(m) <- c("A", "B", "C", "D") 
+# distance matrix
+m <- as.dist(m)
+m
+# hierarchical clustering
+m_hclust <- hclust(m, method = "average")
+
+# plotting it
+plot(m_hclust)
+
+########
+
+# B: using coordinates
+
+# Create the points A and B
+A <- c(0, 0, 0)
+B <- c(3, 0, 0)
+C <- c(0, 4, 0)
+D <- c(-1, (179/32), sqrt(17111)/32)
+# Combine the points into a matrix
+points <- rbind(A, B, C, D)
+
+# Calculate the distance matrix
+dist_matrix <- dist(points)
+# Print the distance matrix
+dist_matrix
+# hierarchical clustering
+m_hclust_2 <- hclust(dist_matrix, method = "average")
+# plotting it
+plot(m_hclust_2)
+```
+
+
+**Above, we have used both the given distance matrix and our point coordinates to create a hierarchical clustering. Looking at the plot, the y axis shows the height (distance) between the progressive clusters. A, B stands at h = 3, the distance between (A,B) and C is 4.5 and finally the distance of (A, B, C) and D is 6.5. However this is not the same results as the ones we got by performing the algorithm ourselves, as shown above, where the distances were 3, 4.27 and 6.23 respectively. In section 1a, we were calculating the centre of each new cluster as the average between the points involved in that cluster. Thus, we assumed we were calculating either the average or the centroids. However, when we put those as our preferred methods, the distances are slightly different.**
+
+#### 2. **$k$-means clustering on texts.**
+
+2.a) Extract a subset of the texts from the `quanteda.corpora::data_corpus_ukmanifestos` corpus that includes just the Conservative, Labour, and Lib Dem parties from 1970 onward.
+
+```{r}
+data_corpus_ukmanifestos <- quanteda.corpora::data_corpus_ukmanifestos
+corpus <- corpus_subset(data_corpus_ukmanifestos, Year >= 1970)
+corpus <- corpus_subset(corpus, Party == "Con" | Party == "Lab" | Party == "LD")
+```
+
+
+2.b) Perform a $k$-means clustering of these texts for $k=3$. Examine which manifestos fall into each cluster. What do you learn?
+
+```{r}
+# Tokenise 
+toks <- tokens(corpus, verbose=TRUE, remove_punct=TRUE)
+toks <- tokens_remove(toks, stopwords("english"))
+
+# Create dfm 
+mdfm <- dfm(toks)
+cdfm <- dfm_trim(mdfm, min_docfreq = 5, verbose=TRUE)
+
+# Perform kmeans
+kc <- kmeans(cdfm, centers=3)
+
+cbind(docvars(corpus)$Party[kc$cluster == 1], docvars(corpus)$Year[kc$cluster==1])
+cbind(docvars(corpus)$Party[kc$cluster == 2], docvars(corpus)$Year[kc$cluster == 2])
+cbind(docvars(corpus)$Party[kc$cluster == 3], docvars(corpus)$Year[kc$cluster == 3])
+
+```
+
+
+**One of the clusters contains the majority of manifestos, totaling 15 across the three parties. These manifestos range from 1970 to 2005, suggesting that most of the manifestos from the parties within this period had similar features. What is more, the third cluster contains five manifestos, all from different years. This suggests that within these years, one party's manifesto had different features to the other party's manifestos. For example, in 2005, Labour's manifesto contained different features to the Conservative and Liberal Democrat manifestos, perhaps deviating from the trend in this year, causing them to be in different clusters.  The second cluster only has two manifestos in it, however both of which are from 1979, suggesting similarity between features in the Conservative and Labour party manifestos during this time.**
+
+2.c) Now perform a $k$-means clustering for each text for $k$ from 1 to 8.  For each outcome, save the total within group sum of squares.  Plot the log total within group sum of squares as a function of $k$.  Use this "scree plot" to select the best $k$ using the elbow method described in the lecture.
+
+```{r}
+# Creates an empty vector storing the total within-group sum of squares
+ws <- vector(mode = "numeric", length = 8)
+
+# Function performs k-means clustering for k from 1 to 8
+for (i in 1:8) {
+  kc.out <- kmeans(cdfm, centers = i, nstart = 20) 
+  ws[i] <- kc.out$tot.withinss
+}
+
+
+# Plot the log total within-group sum of squares as a function of k
+plot(1:8, log(ws), type = "b", xlab = "Number of clusters (k)", ylab = "Log total within-group sum of squares")
+
+```
+
+
+**The best k is 2, as this is where the decrease in the log total within-group sum of squares appears to level off. There is not, however, a clear leveling off, suggesting this is perhaps not a good model.**
+
+1.d) Examine the clusters of Party labels produced by this "best-fitting" k cluster.  Do the groupings make sense?
+
+```{r}
+# Perform k means. 
+kc2 <- kmeans(cdfm, centers = 2)
+
+cbind(docvars(corpus)$Party[kc2$cluster == 1], docvars(corpus)$Year[kc2$cluster==1])
+cbind(docvars(corpus)$Party[kc2$cluster == 2], docvars(corpus)$Year[kc2$cluster == 2])
+
+```
+
+
+**The clusters with k = 2 does not appear to make much sense, with twenty manifestos in one cluster, and the remaining two in another. The second cluster of the Conservative and Labour manifestos of 1979 is the same as in the model where k = 3. However, having twenty manifestos in one cluster does not appear to make much sense when one considers that in the other model there appeared to be a cluster with five manifestos that deviated from the majority of manifestos, thus one would perhaps expect them to be in the second cluster with the 1979 manifestos. That being said, until the features are analysed, this can only be a presumption, as the 1979 manifestos might be so different that none of the other manifestos can simply be clustered with them.**
+
+1.e) Now repeat (c)-(d) after weighting the dfm by relative proportion of terms within documents.  What difference did this make?
+
+```{r}
+# Tokenise 
+toks <- tokens(corpus, verbose=TRUE, remove_punct=TRUE)
+toks <- tokens_remove(toks, stopwords("english"))
+# Make dfm
+mdfm <- dfm(toks)
+# Trim and weight
+wdfm <- dfm_weight(dfm_trim(mdfm, min_docfreq = 5, verbose=TRUE), "prop")
+
+ws2 <- vector(mode = "numeric", length = 8)
+
+# Perform k-means 
+for (i in 1:8) {
+  kc.out <- kmeans(wdfm, centers = i, nstart = 20) # replace x with your data
+  ws2[i] <- kc.out$tot.withinss
+}
+
+# Plot the log total within-group sum of squares as a function of k
+plot(1:8, log(ws2), type = "b", xlab = "Number of clusters (k)", ylab = "Log total within-group sum of squares")
+
+# Compute kmeans for k = 2
+kc3 <- kmeans(wdfm, centers = 2)
+
+# Extract the clusters 
+cbind(docvars(corpus)$Party[kc3$cluster == 1], docvars(corpus)$Year[kc3$cluster==1])
+cbind(docvars(corpus)$Party[kc3$cluster == 2], docvars(corpus)$Year[kc3$cluster == 2])
+
+```
+
+
+**On the whole, the clusters created with k = 2 appears to make more sense with the weighted documents. The first cluster contains sixteen manifestos,including all the manifestos from the pre-1992 period. This suggests that before 1992, there was a large amount of conformity in features in manifestos between parties. What is more, all the manifestos in this cluster are from the Labour and Conservative party's, unsurprising considering the Liberal Democrats were not formed until 1988. The second cluster contains only 6 manifestos, including all of the Liberal Democrat manifestos. It also contains the 2001 and 2005 manifestos from both the Conservative and Liberal Democrat's, suggesting similarity in manifestos, and a divergence from the Conservative manifestos in these years, and perhaps sheds light on the forming of the Coalition in 2010.**
+
+
+#### 3. **Hierarchical Clustering on texts.**
+
+3.a) Compute the matrix of Euclidean distances between each of the party manifestos in the previous exercise. Should you use relative frequencies rather than counts here? Apply the option that makes more sense based on what you know about Euclidean distances.
+
+```{r}
+# create a dfm object from your corpus, weighted by relative frequency
+wdfm <- dfm_weight(mdfm,"prop")
+
+# Compute Euclidean distances between documents
+dist <- dist(wdfm, method = "euclidean")
+party_cluster <- hclust(dist)
+
+# Label with document names 
+party_cluster$labels <- docnames(mdfm)
+
+
+```
+
+
+**Here we have used relative frequencies, as this makes more sense because the Euclidean distance is a measure of the distance between two points in a multidimensional space. Thus the relative frequency becomes a normalization factor, ensuring that the distance is calculated consistently across all dimensions.**
+
+3.b) Plot the dendrogram and describe the groupings.
+
+```{r, fig.width = 6, fig.height = 8}
+plot(party_cluster)
+```
+
+
+**The dendrogram shows at the lowest height no discrepancies in terms of Party. However, there are some discrepancies higher up. For example, the 1970 Labour and 1983 Conservative manifestos have the closest distance, despite being parties with differing ideology. What is more, within this cluster on the left hand side, the 1983 Conservative manifesto is the only manifesto after 1974, suggesting it is an anomaly. This could perhaps be due to the fact that the Uk had been in the Falklands war the year previously, causing the Conservatives to deviate from the norm towards manifestos typically from the 1970's. Adding to this, the two most similar Conservative manifestos were 1979 and 1992. This is surprising considering 1979 was during Margaret Thatchers premiership, so one would expect other manifestos, such as the 1983 and 1987 manifestos to be closest to this, as she was still Prime Minister during these periods. Interestingly, looking at the manifesto's under Blair's leadership of the Labour Party between 1994 and 2007, there does not appear to be any anomalies between manifestos but rather a closeness, such as between the 2001 and 2005 manifestos.**

@@ -1,0 +1,157 @@
+---
+title: "Problem Set 4 - Part C"
+output: html_document
+---
+
+```{r, echo = FALSE}
+library("quanteda", quietly = TRUE, warn.conflicts = FALSE, verbose = FALSE)
+library("topicmodels", quietly = TRUE, warn.conflicts = FALSE, verbose = FALSE)
+library("ggplot2", quietly = TRUE, warn.conflicts = FALSE, verbose = FALSE)
+library("tidyverse", quietly = TRUE, warn.conflicts = FALSE, verbose = FALSE)
+```
+
+### Topic models
+
+As the lecture examples already discussed correlated and structural topic models, in this exercise, we will estimate a simple LDA model. Part of the exercise is therefore to look up some functionalities in a new package's [manual](https://cran.r-project.org/web/packages/topicmodels/topicmodels.pdf). As an exemplary dataset, we will analyse tweets by Donald Trump from January 1st 2017 to June 29th 2018. 
+
+1. Create a histogram with the number of tweets by month.
+
+```{r}
+download.file('https://github.com/lse-my459/pset_data/raw/master/trump-tweets.csv', 'trump-tweets.csv')
+tweets <- readr::read_csv("trump-tweets.csv", col_types="cTDc")
+
+# Convert tweet dates to Date format and extract month
+tweets_month <- tweets %>%
+  mutate(month = lubridate::month(lubridate::ymd_hms(datetime)))
+
+# Create histogram
+ggplot(tweets_month, aes(x = month)) +
+  geom_histogram(fill = "lightblue", color = "white") +
+  scale_x_continuous(breaks = 1:12, labels = month.abb) +
+  labs(x = "Month", y = "Number of tweets", title = "Number of Trump tweets by month")
+```
+
+2. 
+
+Create a corpus object and a dfm using options from `quanteda` that seem appropriate to you. For simplicity in this exercise, use one tweet as one document.
+
+Estimate the LDA model. You can e.g. experiment with different numbers of topics, different pre-processing of the tweets with `quanteda`, or runs of the model with different random number seeds. Hint: When estimating the model, use the function `LDA` and make sure to set a seed in every run with the option `control = list(seed = some_run_specific_number)`. This ensures that you will find the same outcomes when you re-start the estimation of a specific run.
+
+```{r}
+
+library(topicmodels)
+
+# Create corpus and dfm
+tweets_corpus <- corpus(tweets$text) %>%
+  tokens(remove_punct = TRUE, remove_numbers = TRUE) %>%
+  tokens_remove(stopwords("english")) 
+
+tweets_dfm <- dfm(tweets_corpus)
+
+lda_model <- LDA(tweets_dfm, k = 4, control = list(seed = 123))
+
+```
+
+3. Look at the words most associated with each topic for a sample of topics. You can get the top N words of a topic with the function `terms()`. Can you put labels (on some) of the topics?
+
+```{r}
+
+# Extract the top 20 words for each topic
+top_words_terms <- terms(lda_model, 15)
+top_words_terms
+
+```
+**Topic 1: "Positive rhetoric" (words like "great", "thank", "people", "news", "president")**
+**Topic 2: "Policy and current events" (words like "today", "good", "trump", "president")**
+**Topic 3: "Twitter engagement and politics" (words like "rt", "great", "big", "tax", "country")**
+**Topic 4: "Fake news and media bias" (words like "rt", "media", "news")**
+
+4. Use the function `topics()` to obtain the topic with the highest proportion for each of the tweets. For one topic number that you choose, sample some tweets randomly that are predicted to contain that topic in highest proportion, and show that their semantic content (largely) reflects the topic you expected.
+
+```{r}
+set.seed(678)
+
+# Get the topic with the highest proportion for each tweet
+tweets_topics <- topics(lda_model, 1)
+
+# Choose topic number 3
+topic_num <- 3
+
+# Subset the tweets that have the highest proportion for this topic
+topic_tweets <- tweets$text[tweets_topics == topic_num]
+
+# Sample 5 tweets
+sample_tweets <- sample(topic_tweets, 4)
+
+# Print the tweets
+cat(sample_tweets, sep = "\n\n")
+
+
+```
+**For the selected topic number (3), the top words were "rt", "great", "big", "make", and "country". The tweets sampled for this topic seem to reflect a mix of political and policy-related content, with mentions of trade and the economy, the vindication of false statements, and an executive order on election integrity. Overall, the tweets do seem to reflect the general theme of politics and policy, as expected for this topic.**
+
+5. For the topic you chose in the previous exercise, plot how its share has evolved over time. What do you find? Hint: Use the function `posterior` with your estimated model to obtain matrices which we discussed in the lecture that you can name "beta" and "theta". Then you can use the theta matrix to obtain the relevant topic's share in documents and match this data with the time of the documents.
+
+```{r}
+# Extract beta and theta matrices
+beta <- posterior(lda_model)$terms
+theta <- posterior(lda_model)$topics
+
+# Get the topic proportion for each tweet
+tweet_topic_proportions <- apply(theta, 1, which.max)
+
+# Add tweet month to the data frame
+tweets_month$topic <- tweet_topic_proportions
+
+# Calculate the proportion of tweets for the chosen topic by month
+topic_proportions <- tweets_month %>%
+  group_by(month) %>%
+  summarise(topic_prop = sum(topic == topic_num) / n())
+
+# Create line plot
+ggplot(topic_proportions, aes(x = month, y = topic_prop)) +
+  geom_line(color = "darkblue") +
+  scale_x_continuous(breaks = 1:12, labels = month.abb) +
+  labs(x = "Month", y = "Topic Proportion", title = "Share of Tweets for Selected Topic Over Time")
+
+
+```
+
+6. For the topic you plotted over time, use your beta matrix to obtain the top 15 words. Do you find the same 15 words that you found when using the `terms()` function earlier?
+
+```{r}
+
+# Get the top 15 words for the chosen topic using the beta matrix
+top_words_beta <- colnames(beta)[order(-beta[topic_num, ])][1:15]
+
+# Get the top 15 words for topic 3
+top_words_terms_three <- top_words_terms[,3]
+
+cat("Are the list of 15 words identical:", identical(top_words_beta, top_words_terms_three),"\n")
+cat("15 words using 'terms():", top_words_terms_three, sep = ", ","\n")
+cat("15 words using beta matrix:", top_words_beta, sep = ", ","\n")
+
+
+```
+**Yes, the top 15 words obtained using the beta matrix are the same as the top 15 words obtained earlier using the terms() function. This is because the beta matrix contains the probability of each word appearing in each topic, and the terms() function returns the most probable words for each topic based on their probabilities. Therefore, both methods produce the same top words for a given topic.**
+
+7. Also with the beta matrix, compute the share of the word "trade" in each of the topics. Hint: Note that individual word probabilities are relatively small, but you can normalise them for "trade" so that they add up to one across the topics. What are the word's normalised shares across all topics? Which topic does contain the word in the highest proportion? Print the top 15 words of that topic.
+
+```{r}
+# Normalise the probabilities for the word "trade" across all topics
+trade_probs <- beta[,"trade"] / sum(beta[,"trade"])
+
+# Print the normalised probabilities
+cat("Trade Normalised Shares across Topics: ")
+cat(trade_probs, sep = ", ", "\n")
+
+# Find the topic with the highest proportion of the word "trade"
+max_trade_topic <- which.max(trade_probs)
+
+# Print the top 15 words for the topic with the highest proportion of "trade"
+top_words_trade <- colnames(beta)[order(-beta[max_trade_topic, ])][1:15]
+cat("Top 15 words for the topic with the highest proportion of 'trade':", top_words_trade, sep = ", ")
+
+
+```
+**Based on the results, we can see that the word "trade" has the highest proportion in topic 1, with a normalised share of 0.3809668. The top 15 words for this topic are "great, amp, people, news, president, democrats, thank, new, u.s, trump, many, 🇺🇸, just, america, country".**

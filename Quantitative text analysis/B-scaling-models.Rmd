@@ -1,0 +1,190 @@
+---
+title: "Assignment 3"
+author: "Amy Whiffen"
+output: html_document
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "##"
+)
+```
+
+```{r, echo = FALSE}
+library("quanteda", quietly = TRUE, warn.conflicts = FALSE, verbose = FALSE)
+```
+
+### Supervised scaling methods
+
+
+5.  **(4 points) Wordscores applied to Twitter text**.
+
+In class we saw an example of how to estimate ideology based on the text of legislators' tweets. Now we will extend it to tweets by candidates. 
+
+Let's start by reading the tweets by Members of Congress into memory with the code from the lecture materials.
+
+```{r}
+download.file('https://github.com/lse-my459/pset_data/raw/master/congress-tweets.csv', 'congress-tweets.csv')
+
+cong <- read.csv("congress-tweets.csv", stringsAsFactors=F)
+```
+
+The file `candidate-tweets.csv` contains all the tweets sent by Donald Trump, Ted Cruz, Hillary Clinton, and Bernie Sanders during the 2016 primary election campaign. We'll read it into memory and collapse the tweets for each candidate into a single document so that the documents are in the same format as in the Congress dataset.
+
+```{r}
+
+download.file('https://github.com/lse-my459/pset_data/raw/master/candidate-tweets.csv', 'candidate-tweets.csv')
+
+# read in candidate tweets
+candidates <- read.csv("candidate-tweets.csv", stringsAsFactors = FALSE)
+
+
+```
+
+a. Create a single corpus object for all the 105 documents. Make sure you add informative document names. Then, create a vector with the scores for the reference texts (from the 100 legislators) and the virgin texts (for the 4 candidates).
+
+```{r}
+
+# collapse tweets for each candidate into a single document
+candidates_docs <- aggregate(text ~ screen_name, data = candidates, paste, collapse = " ")
+
+# combine candidate and congress documents
+all_docs <- c(cong$text, candidates_docs$text)
+
+# create corpus object with informative document names
+ccorpus <- corpus(all_docs, docnames = c(cong$screen_name, unique(candidates_docs$screen_name)))
+
+# create vector with scores for reference texts (100 legislators) and virgin texts (4 candidates)
+reference_scores <- cong$idealPoint
+virgin_scores <- rep(0, 4)
+scores <- c(reference_scores, virgin_scores)
+
+```
+
+With this new corpus, create a document-feature matrix and trim it to a reasonable size to remove uninformative words.
+
+```{r}
+
+# tokenise corpus object
+toks <- tokens(ccorpus)
+
+# create document-feature matrix
+dfmat <- dfm(toks)
+
+# trim matrix to remove uninformative words
+dfmat_trimmed <- dfm_trim(dfmat, min_docfreq = 2, min_termfreq = 5)
+
+
+```
+
+b. Run wordscores to predict the ideology of the 4 candidates. Use an adequate rescaling method. What do you find? Are the results what you would expect and if not, why do you think that's the case?
+
+```{r}
+
+# fit a Wordscores model
+ws_model <- quanteda.textmodels::textmodel_wordscores(dfmat_trimmed, scores, scale = "linear", smooth = 0)
+
+# predict scores for the virgin texts
+candidate_scores <- predict(ws_model, newdata = dfmat_trimmed[(nrow(cong)+1):nrow(dfmat_trimmed),], rescaling = "lbg")
+
+candidate_scores 
+# combine reference and predicted scores
+all_scores <- c(reference_scores, candidate_scores)
+
+# print the scores for the four candidates
+cat("Donald Trump:", candidate_scores[4], "\n")
+cat("Ted Cruz:", candidate_scores[3], "\n")
+cat("Hillary Clinton:", candidate_scores[2], "\n")
+cat("Bernie Sanders:", candidate_scores[1], "\n")
+
+```
+
+**The Wordscores model predicts the ideology of the 4 candidates on a scale from -2 to +2, with negative scores indicating left-leaning ideology and positive scores indicating right-leaning ideology. The results of the Wordscores analysis suggest that, according to the language used in their speeches during the 2016 U.S. presidential campaign, Donald Trump and Ted Cruz were the two most conservative candidates, while Hillary Clinton and Bernie Sanders were less conservative.**
+
+**These results are generally in line with what one might expect based on the candidates' party affiliations and previous policy positions. Donald Trump and Ted Cruz are both Republicans who have been associated with more conservative positions on issues such as immigration, gun control, and taxes, while Hillary Clinton and Bernie Sanders are both Democrats who have been associated with more progressive positions on these issues.**
+
+**However, it's worth noting that the Wordscores analysis is based solely on the language used in the candidates' speeches during the campaign, and doesn't take into account other factors that might be relevant to their ideological positions, such as their voting records or policy proposals. Additionally, the rescaling method used in the analysis could influence the results to some degree, as different rescaling methods may assign different weights to different words and phrases. Nonetheless, the results of the analysis provide some insight into how the candidates presented themselves during the campaign and how their language reflected their perceived ideological positions.**
+
+
+6. **(3 points) Scaling movie reviews, Part 4**.  Here we will return to the movie reviews one last time.
+
+a. Load the movies dataset from quanteda.corpora. Then, shuffle the dataset, and take a random sample of 500 of the movie reviews as your "reference" texts. As reference scores, set the ones that are positive to a reference value of +1, and the negative reviews to a value of -1 
+    
+```{r}
+data(data_corpus_moviereviews, package = "quanteda.textmodels")
+set.seed(123)
+
+# reshape the corpus to have one document per row
+moviereviews <- corpus_reshape(data_corpus_moviereviews, to = "documents")
+
+# shuffle the dataset
+moviereviews <- sample(moviereviews)
+
+# take a random sample of 500 reviews as reference texts
+ref_reviews <- corpus_subset(moviereviews, docid(moviereviews) %in% sample(docnames(moviereviews), size = 500))
+
+ref_reviews <- tokens(ref_reviews)
+                             
+# create a document-feature matrix and set sentiment scores
+ref_reviews_dfm <- dfm(ref_reviews)
+ref_reviews_sentiment <- docvars(ref_reviews_dfm, "sentiment")
+ref_reviews_sentiment <- ifelse(ref_reviews_sentiment == "pos", 1, -1)
+
+```
+        
+b. Score the remaining movie reviews, and predict their "positive-negative" rating using Wordscores. Remember to first create a document-feature matrix. You may want to stem the features here.
+    
+```{r}
+
+# create a document-feature matrix for the remaining movie reviews
+movie_reviews <- corpus_reshape(data_corpus_moviereviews, to = "documents")
+movie_reviews <- sample(movie_reviews)
+remaining_reviews <- corpus_subset(movie_reviews, !docid(movie_reviews) %in% docid(ref_reviews))
+remaining_reviews_tokens <- tokens(remaining_reviews)
+
+# create a document-feature matrix for the remaining movie reviews and set the sentiment labels to +1/-1
+remaining_reviews_dfm <- dfm(remaining_reviews_tokens)
+remaining_reviews_sentiment <- docvars(remaining_reviews_dfm, "sentiment")
+remaining_reviews_sentiment <- ifelse(remaining_reviews_sentiment == "pos", 1, -1)
+
+# set the reference scores for the remaining reviews
+docvars(remaining_reviews_dfm, "reference_score") <- remaining_reviews_sentiment
+
+# score the remaining reviews using textmodel_wordscores
+remaining_reviews_scores <- quanteda.textmodels::textmodel_wordscores(x = remaining_reviews_dfm, y = remaining_reviews_sentiment, scale = "linear", smooth = 0)
+
+predict_reviews_scores <- predict(remaining_reviews_scores)
+
+```
+
+c. From the results of b, look for examples for each side of score 0 for miss classifications. Why do you think the model failed in those cases?
+
+```{r, fig.width = 3, fig.height = 5}
+
+# extract the corpus subset of misclassified documents
+misclassified_docs <- corpus_subset(movie_reviews, docid(movie_reviews) %in% names(predict_reviews_scores)[predict_reviews_scores != remaining_reviews_sentiment])
+
+# extract the text of the misclassified documents
+misclassified_text <- texts(misclassified_docs)
+
+# find examples for each side of score 0 for miss classifications
+misclassified_positive <- subset(misclassified_text, predict_reviews_scores > 0 & remaining_reviews_sentiment < 0)
+
+misclassified_negative <- subset(misclassified_text, predict_reviews_scores < 0 & remaining_reviews_sentiment > 0)
+
+```
+
+**When looking at the first missclassified positive review, we can see that the review for "Shakespeare in Love" is complex and nuanced, which may have led to confusion for the Wordscores model. The model may have identified certain positive words and phrases, such as "most enjoyable period piece ever made" and "successfully entertain any audience," and interpreted them as indicative of a positive sentiment overall. However, the reviewer's overall sentiment is negative, as evidenced by phrases like "incredibly cheap illusion," "tragically unbelievable and comically bad," and "sad excuse for a film."**
+
+**One potential reason for the model's failure is its inability to pick up on the reviewer's use of sarcasm and irony. For example, the reviewer notes that "entertainment may be fun, but it isn't necessarily quality," which is a subtle way of criticizing the movie's lack of substance. Similarly, the reviewer's comment about the credited writers not being Shakespeare himself is meant to highlight the film's lack of originality and quality. However, the model may have missed these nuances and instead focused on the positive language used to describe the movie's entertainment value.**
+
+**Another possible explanation for the model's misclassification is that it was not able to fully capture the reviewer's perspective on the movie. The reviewer provides a detailed critique of the film's plot, acting, and writing, and it is possible that the model was not able to process all of this information in a way that accurately captured the overall sentiment. In other words, the model may have focused too heavily on specific words and phrases, rather than considering the larger context of the review.**
+
+**When looking at the first missclassified negative review, the reviewer provides a detailed critique of the movie "Planet of the Apes," noting its plot, characters, and visual effects. The reviewer is generally positive about the movie, stating that they found themselves "generally entertained throughout most of this film" and recommending it as "fun, summer fare." The reviewer praises the movie's characterisations and they also give credit to the actors inside the costumes for selling their characters on the screen. The reviewer enjoys the performances of Bonham Carter and Tim Roth and likes the beginning of the film, the whole build-up once Wahlberg gets into the village, the escape, and most of the fight scenes. The reviewer's main criticisms of the movie are that they did not care for the way the battle sequence was resolved and that they did not like the lead character's cold demeanor and lack of chemistry with either one of his love interests.**
+
+**One possible reason for the model's misclassification is that it may have focused too heavily on the negative aspects of the review, such as the criticisms of the lead character and the battle sequence. However, the overall sentiment of the review is positive, as the reviewer recommends the movie as "fun, summer fare" and praises its visual effects, performances, and overall premise. Another reason for the model's misclassification could be the complexity of the review. The reviewer provides a detailed analysis of the movie, which includes both positive and negative aspects. The model may have struggled to accurately capture the overall sentiment of the review due to the mix of positive and negative language used throughout.**
+
+**Overall, in both examples the Wordscores model failed to accurately identify the sentiment in the reviews, likely due to its complexity and nuanced perspective.**
+
+

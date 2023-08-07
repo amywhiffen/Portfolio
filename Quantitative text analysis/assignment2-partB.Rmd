@@ -1,0 +1,227 @@
+---
+title: "Assignment 2 - part B"
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "##"
+)
+```
+
+```{r, echo = FALSE}
+library("quanteda", quietly = TRUE, warn.conflicts = FALSE, verbose = FALSE)
+library(quanteda.textstats)
+library(quanteda.textplots)
+library(tidyverse)
+
+```
+
+### 3. Getting used to dictionaries
+
+#### 3.A. Creating a simple dictionary. (3 pts)
+
+Dictionaries are named lists, consisting of a "key" and a set of entries defining
+the equivalence class for the given key.  To create a simple dictionary of parts of
+speech, for instance we could define a dictionary consisting of articles and conjunctions, using the `dictionary()` constructor
+
+```{r}
+posDict <- dictionary(list(articles = c("the", "a", "an"),
+                           conjunctions = c("and", "but", "or", "nor", "for", "yet", "so")))
+```
+
+You can examine this dictionary by invoking its `print` method, simply by typing the name of the object and pressing Enter.  Try that now.
+
+What is the structure of this object?  (Hint: use `str()`.)
+
+**YOUR ANSWER HERE**
+
+```{r}
+print(posDict)
+str(posDict)
+```
+*posDict is a dictionary object with two key entries. The first entry is articles and the second entry is conjunctions. Keys are printed inside square brackets and values for each key are printed after each key.*
+
+*The formal class of posDict is a 'dictionary2' with two slots (keys), which are an object from the quanteda package. So the dictionary is contains two lists or keys, one named 'articles', the other named 'conjunctions'. The valuetype of both keys are characters (chr "glob"). 'Articles' contain three character values (words) while 'conjunctions' is comprised by seven character values.*
+
+Create a DFM with the `data_corpus_inaugural` corpus (which comes with quanteda) and apply the dictionary.
+
+```{r}
+inaugural_dfm <- data_corpus_inaugural %>%
+  tokens() %>%
+  dfm()
+inaugural_dfm_dict <- dfm_lookup(inaugural_dfm, dictionary = posDict, valuetype = "glob")
+```
+
+Now, plot the values of articles and conjunction over the time (across the speeches). Make sure the x-axis shows the years.
+
+Is the distribution of normalized articles and conjunctions relatively constant across years, as you would expect?
+
+**YOUR ANSWER HERE**
+
+```{r}
+inaugural_dict_df <- inaugural_dfm_dict %>%
+  convert(to = "data.frame") %>%
+  separate(doc_id, c("year", "president"), sep = "-") %>%
+  select(president, year, articles, conjunctions) %>%
+  mutate(year = as.integer(year))
+
+# Create the plot. 
+ggplot(inaugural_dict_df, aes(x = year)) +
+  geom_line(aes(y = articles, color = "articles")) +
+  geom_line(aes(y = conjunctions, color = "conjunctions")) +
+  scale_color_manual(name = "Type",
+                     values = c("articles" = "red", "conjunctions" = "blue")) +
+  labs(title = "Usage of Articles and Conjunctions on Inaugural Speeches",
+       subtitle = "US Inaugural Speeches from Washington in 1789 to Biden in 2021",
+       caption = "Corpus retrieved from the 'Quanteda' R package",
+       x = "Year",
+       ylab = "Frequency") +
+  theme_minimal() +
+  theme(legend.position = "top")
+```
+
+
+
+*The distribution does not appear to be normalized because two outliers that (Harrison 1841 and Taft 1909) create a visualization problem. However, the plot does show that since the second half of the twentieth century, the use of articles and conjunctions has been very stable and similar.*
+
+Replicate the graph, but this time using weights in the `posDfm` that take into account the differences in the length of each speech. Do you find the same pattern?  Interpret the pattern you observe.
+
+**YOUR ANSWER HERE**
+
+```{r}
+speech_lengths <- data_corpus_inaugural %>%
+  tokens() %>%
+  lengths() %>%
+  tibble(speech = names(.), speech_len = .) %>%
+  separate(speech, c("year", "president"), sep = "-") %>%
+  mutate(year = as.integer(year))
+speech_lengths
+
+inaugural_dict_df <- inaugural_dict_df %>%
+  left_join(speech_lengths %>% select(year, speech_len), by = "year")
+
+inaugural_dict_df <- inaugural_dict_df %>%
+  mutate(article_freq = articles*100/speech_len,
+         conjunction_freq = conjunctions*100/speech_len) %>%
+  mutate(article_conjunction = article_freq/conjunction_freq)
+
+ggplot(inaugural_dict_df, aes(x = year)) +
+  geom_line(aes(y = article_freq, color = "articles")) +
+  geom_line(aes(y = conjunction_freq, color = "conjunctions")) +
+  scale_color_manual(name = "Type",
+                     values = c("articles" = "red", "conjunctions" = "blue")) +
+  labs(title = "Realtive Frequency of Articles and Conjunctions on Inaugural Speeches",
+       subtitle = "US Inaugural Speeches from Washington in 1789 to Biden in 2021",
+       caption = "Corpus retrieved from the 'Quanteda' R package",
+       x = "Year",
+       y = "Realtive frequency (per 100 words)") +
+  theme_minimal() +
+  theme(legend.position = "top")
+
+```
+
+
+*This adjustment is much more helpful as it fixes scaling problems that arise because of the different length of inaugural speeches. The plot shows the relative frequency of articles and conjunctions per 100 words. We can see that until 2001, articles were more frequent than conjunctions except for Wilson in 1917 and Carter in 1977. However, in four out of the six inaugural speeches of this century the use of conjunctions has been higher than of articles. This can also be seen in the previous plot but scaling issues makes it very difficult to see. In a way, this plot shows a decreasing trend in the relative use of articles and a stable pattern in the use of conjunctions.* 
+
+#### 3.B. Hierarchical dictionaries. (3 pts)
+
+Dictionaries may also be hierarchical, where a top-level key can consist of subordinate keys, each a list of its own.  For instance, `list(articles = list(definite="the", indefinite=c("a", "an"))` defines a valid list for articles.  Make a dictionary of articles and conjunctions where you define two levels, one for definite and indefinite articles, and one for coordinating and  subordinating conjunctions.  (A sufficient list for your purposes of  subordinating conjuctions is "although", "because", "since", "unless".)
+
+```{r}
+hierarchical_dict <- dictionary(list(articles = list(definite = "the",
+                                           indefinite = c("a", "an")),
+                           conjucntions = list(coordinating = c("and", "but", "or", "nor", "for", "yet", "so"),
+                                               subordinating = c("although", "because", "since", "unless"))))
+```
+
+Now apply this to the `data_corpus_inaugural` object, and examine the resulting features. 
+
+```{r}
+# Apply new dictionary to the dfm
+inaugural_dfm_dict2 <- dfm_lookup(inaugural_dfm, dictionary = hierarchical_dict, valuetype = "glob")
+inaugural_dfm_dict2
+
+# Make same data manipulation as before
+inaugural_dict_df2 <- inaugural_dfm_dict2 %>%
+  convert(to = "data.frame") %>%
+  separate(doc_id, c("year", "president"), sep = "-") %>%
+  select(president, year, articles.definite, articles.indefinite, conjucntions.coordinating, conjucntions.subordinating) %>%
+  mutate(year = as.integer(year))
+inaugural_dict_df2
+
+# Plot same ggplot as befor with the new df
+ggplot(inaugural_dict_df2, aes(x = year)) +
+  geom_line(aes(y = articles.definite, color = "the")) +
+  geom_line(aes(y = articles.indefinite, color = "'a' or 'an'")) +
+  geom_line(aes(y = conjucntions.coordinating, color = "coordinating conjunctions")) + 
+  geom_line(aes(y = conjucntions.subordinating, color = "subordinating conjunctions")) +
+  scale_color_manual(name = "Type",
+                     values = c("the" = "red", "'a' or 'an'" = "green","coordinating conjunctions" = "blue", "subordinating conjunctions" = "grey")) +
+  labs(title = "Usage of Articles and Conjunctions on Inaugural Speeches",
+       subtitle = "US Inaugural Speeches from Washington in 1789 to Biden in 2021",
+       caption = "Corpus retrieved from the 'Quanteda' R package",
+       x = "Year",
+       ylab = "Frequency") +
+  theme_minimal() +
+  theme(legend.position = "top")
+```
+
+
+What happened to the hierarchies, to make them into "features"?
+
+*Now instead of having two features, one for articles and one for conjunction, we have four features, as each sublist is a unique feature. So, the four features are: articles.definite, articles.indefinite, conjunctions.coordinating, conjunctions.subordinating.*
+
+**YOUR ANSWER HERE**
+
+Do the subcategories sum to the two general categories? Write code to check if that's the case. Explain why/why not.
+
+
+**YOUR ANSWER HERE**
+
+```{r}
+inaugural_dict_df2 <- inaugural_dict_df2 %>%
+  mutate(articles = articles.definite + articles.indefinite) %>%
+  mutate(conjunctions = conjucntions.coordinating + conjucntions.subordinating) %>%
+  select(president, year, articles, conjunctions)
+inaugural_dict_df
+inaugural_dict_df2
+```
+        
+*As we can see, the number of articles is the same regardless of the dictionary we apply to the dfm. However, the number of conjunctions is higher when we use the hierarchical dictionary. This is because the second dictionary includes some subordinating conjunctions and all of the coordinating subjunctions, whereas the first dictionary only contains the coordinating conjunctions. In contrast, both dictionaries contain the same number of articles (three).*
+
+### 4. Getting used to thesauruses (3 pts)
+
+A "thesaurus" is a list of feature equivalencies specified in the same list format as a dictionary, but with a key difference. Which one? Let's find out.
+
+If we wanted to count pronouns as equivalent, for instance, we could use the thesaurus argument to `dfm` in order to group all listed prounouns into a single feature labelled "PRONOUN".
+
+```{r}
+mytexts <- c("We are taking MY459, I am also taking MY474.", "I bought myself a new car.")
+myThes <- dictionary(list(pronouns = list(firstp = c("I", "me", "my", "mine", "myself", "we", "us", "our", "ours"))))
+myDfm <- dfm(tokens(mytexts))
+dictDfm <- dfm_lookup(myDfm, myThes, valuetype = 'fixed', capkeys=TRUE)
+
+dictDfm
+```
+
+Notice how the thesaurus key has been made into uppercase---this is to identify it as a key, as opposed to a word feature from the original text. We can do this by setting the `capkeys` argument to `TRUE`.
+
+Try running the articles and conjunctions dictionary from the previous exercise on `mytexts` as a thesaurus, and compare the results. What is the main difference?
+
+**YOUR ANSWER HERE**
+
+```{r}
+dictDfm2 <- dfm_lookup(myDfm, posDict, valuetype = 'fixed', capkeys=TRUE)
+dictDfm
+dictDfm2
+
+```
+
+*The resulting data frame has grouped the articles and conjunctions together into two features labeled "ARTICLES" and "CONJUNCTIONS", respectively.  This grouping allows for easy aggregation and summaries of the articles and conjunctions in the text data.*
+
+*Compared to using a dictionary, the main advantage of using a thesaurus is the ability to group multiple words into a single feature. In contrast, a dictionary only allows for a one-to-one mapping of words to features. For example, in the previous exercise, a dictionary was used to map all listed pronouns to a single feature labeled "PRONOUN." However, with a thesaurus, one could group together additional words that are similar in meaning to the pronouns.*
+
+*This feature grouping can be useful in certain text analysis tasks where one wants to treat similar words as a single entity. For example, when analysing sentiment, one might want to group together all positive or negative words, regardless of their specific form. Using a thesaurus can simplify this task by allowing for the grouping of similar words.*
+
+*Looking at the results above, they differ as the posDict has two features: articles and conjunctions, whereas myThes has only one feature, which is first person pronouns. "text1" and "text2" contain two first person pronouns each. Hence, sparse is 0% as the unique feature appears in the two documents of the dfm. In contrast, "text1" and "text2" have no conjunctions, while "text1" contains no articles and "text2" contains one article 'a'. Thus, the dfm is 75% sparse, as three of the four document-feature combinations are equal to zero.*

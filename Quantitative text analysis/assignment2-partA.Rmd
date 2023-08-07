@@ -1,0 +1,239 @@
+---
+title: "Assignment 2 - Part A"
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "##"
+)
+```
+
+```{r, echo = FALSE}
+library("quanteda", quietly = TRUE, warn.conflicts = FALSE, verbose = FALSE)
+library(quanteda.textstats)
+library(quanteda.textplots)
+library(tidyverse)
+
+```
+
+### 1. Descriptive statistics (3 pts)
+
+The file `candidate-tweets.csv` that contains slightly over 25,000 tweets published by the 4 leading candidates in the 2016 Presidential Primary Elections in the US (Cruz, Trump, Clinton, Sanders). Read the dataset into R and then use the `head` and `str` functions to explore its structure.
+
+```{r}
+data <- read.csv("candidate-tweets.csv", stringsAsFactors=FALSE)
+
+```
+
+How many tweets are retweets? Use regular expressions to answer this question.
+
+**YOUR ANSWER HERE**
+
+```{r}
+retweets <- data %>%
+  # Select tweets that start "RT "
+  # Some tweets have "RT " but not at the beginning
+  # Total observations of "RT " is 7488
+  filter(str_detect(text, "^RT "))
+paste("The number of tweets that are retweets is", nrow(retweets))
+
+```
+
+*The number of tweets that are retweets is 7354.*
+
+How many tweets were sent by each of the candidates? Create a (smaller) data frame that contains only tweets by Bernie Sanders.
+
+**YOUR ANSWER HERE**
+
+```{r}
+# Create dataframe with the number of tweets per candidate
+candidates <- data %>%
+  # Group by screen name
+  group_by(screen_name) %>%
+  # Summarise and coun the number of tweets per candidate
+  summarise(num_tweets = n())
+# Print candidates to see distribution of tweets by candidates
+candidates
+
+# Create dataframe with the tweets of Bernie Sanders
+sanders <- data %>%
+  # Filter obs where the screen name is BernieSanders
+  filter(screen_name == "BernieSanders")
+# We can print the number of rows (4,025) to confirm that the number matches the one from candidates
+nrow(sanders)
+```
+
+How many times did Bernie Sanders mention words related to 'health care'? and 'immigration'? and 'billionaires'? 'gun control'? 'poverty'? Use regular expressions to make sure your searches return all relevant results.
+
+**YOUR ANSWER HERE**
+
+```{r}
+sanders$text <- tolower(sanders$text)
+# 1. Count health care and related bigrams
+health_care <- c('health care', 'medicaid', 'medicare', 'health insurance', 'obamacare')
+health_care_counts <- sapply(health_care, function(pattern) {
+  str_count(sanders$text, paste0(pattern))
+})
+health_care_counts <- sum(health_care_counts)
+print(paste("Sanders used terms related with health care", health_care_counts, "times."))
+
+# 2. Count immigration-related words
+immigration <- c('immigra', 'migra')
+immigration_counts <- sapply(immigration, function(pattern) {
+  str_count(sanders$text, paste0(pattern))
+})
+immigration_counts <- sum(immigration_counts)
+print(paste("Sanders used terms related with immigration and migrants", immigration_counts, "times."))
+
+# 1. Count billionaires and related terms
+billionaires <- c('billionaire', 'top 1%', 'top 0.1%', 'very rich', 'very wealthy')
+billionaires_counts <- sapply(billionaires, function(pattern) {
+  str_count(sanders$text, paste0(pattern))
+})
+billionaires_counts <- sum(billionaires_counts)
+print(paste("Sanders used terms related with billionaires", billionaires_counts, "times."))
+
+# 4. Count gun control and related terms
+gun <- c('gun control', 'guns')
+gun_counts <- sapply(gun, function(pattern) {
+  str_count(sanders$text, paste0(pattern))
+})
+gun_counts <- sum(gun_counts)
+print(paste("Sanders used terms related with guns and gun control", gun_counts, "times."))
+
+# 5. Count poverty and related terms
+poverty <- c('pover', 'lower cass', 'working class', 'the poor')
+poverty_counts <- sapply(poverty, function(pattern) {
+  str_count(sanders$text, paste0(pattern))
+})
+poverty_counts <- sum(poverty_counts)
+print(paste("Sanders used terms related with poverty", poverty_counts, "times."))
+
+```
+
+*Sanders used terms related with health care 184 times.*
+*Sanders used terms related with immigration and migrants 96 times.*
+*Sanders used terms related with billionaires 150 times.*
+*Sanders used terms related with guns and gun control 7 times.*
+*Sanders used terms related with poverty 92 times.*
+
+What are the 10 most frequent hashtags in the tweets by Bernie Sanders? Try to answer this question creating a function, instead of copying and pasting the code from earlier in the class.
+
+**YOUR ANSWER HERE**
+
+```{r}
+# Create function top_hashtags
+# If no number is specified, it returns the top 10
+top_hashtags <- function(tweet_df, number = 10) {
+  # Extract all hashtags; tweet text must be in a column called "text"
+  hashtags <- str_extract_all(tweet_df$text, "#\\w+") %>%
+    # Flatten hashtags into a single character vector
+    unlist() %>%
+    # Count the frequency of each hashtag
+    table() %>%
+    # Sort by decreasing order
+    sort(decreasing = TRUE) %>%
+    # Take the specified number of top hasthags
+    head(number) %>%
+    # Convert into a dataframe
+    as.data.frame() %>%
+    # Name columns of dataframe
+    rename(hashtag = ".", frequency = "Freq")
+  return(hashtags)
+}
+# Print answer for Bernie Sanders tweets
+(top_hashtags(sanders))
+
+```
+
+
+Now, find the 10 most frequent hashtags for each candidate. You can use a loop to answer this question or just run the above function for each candidate separately.
+
+```{r}
+# Create dataframes for each candidate
+clinton <- data %>%
+  filter(screen_name == "HillaryClinton")
+trump <- data %>%
+  filter(screen_name == "realDonaldTrump")
+cruz <- data %>%
+  filter(screen_name == "tedcruz")
+
+(top_hashtags(sanders))
+(top_hashtags(clinton))
+(top_hashtags(trump))
+(top_hashtags(cruz))
+```
+
+Now going to back to the dataset with tweets by Bernie Sanders, try to create a corpus and DFM object. Think carefully through the different options (e.g. should you exclude stopwords?). Then, look at the 25 most frequent words. What do you learn?
+
+**YOUR ANSWER HERE**
+
+```{r}
+# Remove specific stopwords from the list
+en_stopwords <- stopwords("en")
+en_stopwords <- setdiff(en_stopwords, c("we", "our", "they", "them", "you", "i"))
+
+# Create a corpus out of Sanders' tweets (already lowercased)
+sanders_corpus <- corpus(sanders$text)
+
+# Create a dfm remove punctuation and the limited stopword list
+sanders_dfm <- sanders_corpus %>%
+  tokens(remove_punct = TRUE) %>%
+  tokens_remove(en_stopwords) %>%
+  # Remove specific non meaningful words found in the top-25
+  tokens_remove(c("https","rt","@berniesanders")) %>%
+  # convert the corpus into a dfm
+  dfm()
+
+```
+
+Plot the DFM you just created using a wordcloud. What do you learn?
+
+**YOUR ANSWER HERE**
+
+```{r}
+# Plot the wordcluod
+textstat_frequency(sanders_dfm, 25)
+textplot_wordcloud(sanders_dfm, min_size=2, max_size=10, max_words=25)
+```
+
+
+*It is interesting to see that Sanders uses his name "Bernie" more frequently than his last name "Sanders". It is also interesting to see that he uses the word "we" 1210 times, more than twice than "I" (542), which he uses as often as "our" 534. If we add the other to terms that complete the top-5: you (460 times) and people (448), you can get the idea of that the type of messages Bernie posts on Twitter are directed to appeal the notion of speaking as a voice of the people rather than a more individualistic approach such a Donald Trump. It is interesting that the only terms that might be associated with a specific policy or campaign promise is "wall", which he used 175 times. The term "wall" should be associated with Trump's campaign to build a wall in the Southern Border. This shows in a way how Trump controlled the agenda. The other 24 terms that appear in the top-25 are words that would be common for any English speaking politician involved in a campaign.*
+
+
+### 2. Using regular expressions (2 pts)
+
+Regular expressions are very important concepts in text processing, as they offer
+tools for searching and matching text strings based on symbolic representations.
+For the dictionary and thesaurus features, we can define equivalency classes in terms of regular expressions.  There is an excellent tutorial on regular expressions at <http://www.regular-expressions.info>.
+
+This provides an easy way to recover syntactic variations on specific words, without relying on a stemmer.  For instance, we could query a regular expression on tax-related words, using:
+
+```{r, eval = FALSE}
+kwic(tokens(data_corpus_inaugural), "tax", valuetype = "regex")
+kwic(tokens(data_corpus_inaugural), "tax")
+```
+
+Why is the result different than the output you get when you run `kwic(data_corpus_inaugural, "tax")`?
+
+**YOUR ANSWER HERE**
+
+*The result is different because if we specify the valuetype == "regex" we include all syntactic variations of specific words, which is even more powerful than a stemmer. In other words, with this valuetype we retrieve¿ terms such as: "taxes", "taxgatherer", "taxation", and "taxing." All of this terms would appear if we stem using "tax". However, this code also includes the term "overtaxed", which would have been removed with a stemmer. This code finds 76 observations of "tax", whereas without the regex valuetype there are only 20 observations. This means that there are 20 times the exact word "tax" appears, and 56 times a synthetic variation of the type "tax" appears.*
+
+What if we on wanted to construct a regular expression to query only "valued" and "values" but not other variations of the lemma "value"?
+
+The easiest way would be to use c() and specify all the variations you want as follows:
+```{r}
+# Use kwic and see the appearances of the word value and the two specific variations
+value_lemma <- c("value", "values", "valued")
+kwic(tokens(data_corpus_inaugural), value_lemma)
+```
+
+Could we construct a "glob" pattern match for the same two words?
+
+**YOUR ANSWER HERE**
+```{r}
+kwic(tokens(data_corpus_inaugural), c("*tax*", "*value*"), valuetype = "glob")
+```
+

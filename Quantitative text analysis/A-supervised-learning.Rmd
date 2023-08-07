@@ -1,0 +1,325 @@
+---
+title: "Assignment 3"
+author: "Amy Whiffen"
+output: html_document
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "##"
+)
+```
+
+```{r, echo = FALSE}
+library("quanteda", quietly = TRUE, warn.conflicts = FALSE, verbose = FALSE)
+```
+
+### Machine Learning for Text
+
+In this assignment, you will use R to understand and apply document classification and supervised scaling using R and **quanteda**.
+
+1. **(3 points) Classifying movie reviews, Part 1**.  We will start with a classic computer science dataset of movie reviews, [(Pang and Lee 2004)](http://www.cs.cornell.edu/home/llee/papers/cutsent.pdf).
+The movies corpus has an attribute `Sentiment` that labels each text as either `pos` or `neg` according to the original imdb.com archived newspaper review star rating.  We will begin by examining the conditional probabilities at the word level.
+
+a.  Load the movies dataset and examine the attributes:
+
+```{r}
+require(quanteda, warn.conflicts = FALSE, quietly = TRUE)
+library(quanteda.textmodels)
+data(data_corpus_moviereviews, package = "quanteda.textmodels")
+summary(data_corpus_moviereviews, 10)
+```    
+
+b. What is the overall probability of the class `pos` in the corpus? Are the classes balanced? (Hint: Use `table()` on the docvar of `Sentiment`.) 
+        
+```{r}
+
+table(data_corpus_moviereviews$sentiment)
+
+pos <- sum(data_corpus_moviereviews$sentiment == "pos")
+neg <- sum(data_corpus_moviereviews$sentiment == "neg")
+
+pos_prob <- pos/(pos+neg)
+
+cat("The overall probability of the class `pos` in the corpus is:", pos_prob)
+
+```
+
+**Yes you can see from the results that the classes are balanced with both negative and positive being 1000 with the overall probability of the class `pos` in the corpus is being 0.5**
+
+c. Make a dfm from the corpus, grouping the documents by the `Sentiment` docvar. 
+
+Words with very low overall frequencies in a corpus of this size are unlikely to be good general predictors. Remove words that occur less than twenty times using `dfm_trim`.
+
+```{r}
+
+tokens_reviews <- data_corpus_moviereviews %>% 
+  tokens(remove_punct = T)
+dfm_reviews <- dfm(tokens_reviews)
+dfm_reviews_grouped <- dfm_group(dfm_reviews, groups = data_corpus_moviereviews$sentiment)
+dfm_reviews_trimmed <- dfm_trim(dfm_reviews_grouped, min_count = 20)
+
+```
+
+d. Calculate the word-level likelihoods for each class, from the reduced dfm.  (This is the probability of a word given the class `pos` and `neg`.)  What are the word likelihoods for `"good"` and "`great`"? What do you learn? Use `kwic()` to find out the context of `"good"`.
+
+Clue: you don't have to compute the probabilities by hand. You should be able to obtain them using `dfm_weight`.
+    
+```{r}
+wordprobs <- dfm_weight(dfm_reviews_trimmed, "prop")
+wordprobs_good_great <- dfm_select(wordprobs, c("good", "great"))
+wordprobs_good_great
+
+head(kwic(tokens_reviews, "good", "fixed", window = 10))
+
+```
+
+**The word likelihoods for "good" and "great" are as follows:**
+
+**P(good|neg) = 0.001846319**
+**P(good|pos) = 0.001739247**
+**P(great|neg) = 0.0006459663**
+**P(great|pos) = 0.0010855704**
+
+**The results suggest that the word "good" is used slightly more frequently in negative reviews compared to positive reviews, while the word "great" is used more frequently in positive reviews compared to negative reviews.**
+
+**I can see from the examples of the context in which the word "good" appears it seems that the word is often used in conjunction with other words that convey a negative sentiment, such as "mess", "strain", and "horror". This may explain why the word likelihood for "good" is slightly higher in negative reviews. However, the context also reveals that the word can be used in a positive sense, such as "pretty good" or "really good", so it's not a reliable indicator of sentiment on its own.**
+
+2.  **(4 points) Classifying movie reviews, Part 2**.  Now we will use `quanteda`’s naive bayes `textmodel_nb()` to run a prediction on the movie reviews.
+
+a. The movie corpus contains 1000 positive examples followed by 1000 negative examples.  When extracting training and testing labels, we want to get a mix of positive and negative in each set, so first we need to shuffle the corpus. You can do this with the `corpus_sample*()` function:
+
+```{r}
+set.seed(1234)  # use this just before the command below
+
+moviesShuffled <- corpus_sample(data_corpus_moviereviews, size = 2000)
+```
+
+Next, make a dfm from the shuffled corpus, and make training labels. In this case, we are using 1500 training labels, and leaving the remaining 500 unlabelled to use as a test set. We will also trim the dataset to remove rare features.
+
+```{r}
+tokens_moviesShuffled <- tokens(moviesShuffled)
+dfm_moviesShuffled <- dfm(tokens_moviesShuffled)
+dfm_moviesShuffled_trimmed <- dfm_trim(dfm_moviesShuffled, min_termfreq = 20)
+
+sent_lab <- docvars(dfm_moviesShuffled_trimmed, "sentiment")
+
+train <- as.factor(sent_lab[1:1500])
+test <- as.factor(sent_lab[1501:2000])
+
+```
+
+b. Now, run the training and testing commands of the Naive Bayes classifier, and compare the predictions for the documents with the actual document labels for the test set using a confusion matrix.
+
+```{r}
+
+classifier <- textmodel_nb(dfm_moviesShuffled_trimmed[1:1500, ], train)
+predicted_sentiments <- predict(classifier, newdata = dfm_moviesShuffled_trimmed[1501:2000, ])
+
+movTable <- table(predicted_sentiments, test)
+print(movTable)
+
+
+```
+
+c. Compute the following statistics for the last classification. Use this code for starters:
+
+```{r}
+precrecall <- function(mytable, verbose=TRUE) {
+    truePositives <- mytable[1,1]
+    falsePositives <- sum(mytable[1,]) - truePositives
+    falseNegatives <- sum(mytable[,1]) - truePositives
+    trueNegatives <- sum(mytable) - truePositives - falsePositives - falseNegatives
+    precision <- truePositives / (truePositives + falsePositives)
+    recall <- truePositives / (truePositives + falseNegatives)
+    F1_score <- 2 * (precision * recall) / (precision + recall)
+    accuracy <- (truePositives + trueNegatives) / sum(mytable)
+    if (verbose) {
+        print(mytable)
+        cat("precision =", round(precision, 2), "\n",
+            "recall =", round(recall, 2),"\n",
+            "F1_score =", round(F1_score, 2), "\n",
+            "accuracy =", round(accuracy, 2))
+    }
+    invisible(c(precision, recall, F1_score, accuracy))
+}
+
+```
+    
+Hint: Computing precision and recall is not the same if we are considering the "true positive" to be predicting positive for a true positive, versus predicting negative for a true negative.  Since the factors of `Sentiment` are ordered alphabetically, and since the table command puts lower integer codes for factors first, `movtable` by default puts the (1,1) cell as the case of predicting negative reviews as the "true positive", not predicting positive reviews.  To get the positive-postive prediction you will need to reverse index it, e.g. `movTable[2:1, 2:1]`.
+
+1. precision and recall, *for the positive category prediction*;
+        
+```{r}
+
+precrecall(movTable[2:1, 2:1], verbose=TRUE)
+
+```
+
+2. accuracy.
+        
+```{r}
+
+accuracy <- sum(diag(movTable)) / sum(movTable)
+cat("\n accuracy =", round(accuracy, 2), "\n")
+
+
+```
+
+3.  **(3 points) Classifying movie reviews, Part 3**  
+
+a. Run the classification task using a lasso regression through the `cv_glmnet()` function in the `glmnet` package. Then, show the graph with the cross-validated performance of the model based on the number of features included. You should find a curvilinear pattern. Why do you think this pattern emerges?
+
+```{r}
+
+library(quanteda)
+library(glmnet)
+
+set.seed(1234)
+
+cv_fit <- cv.glmnet(dfm_moviesShuffled_trimmed[1:1500,], 
+                     train,
+                     family = "binomial", alpha = 1, nfolds = 5, 
+                     parallel = TRUE, intercept = TRUE, 
+                     type.measure = "class")
+
+plot(cv_fit)
+```
+
+**The graph of the cross-validated performance of the lasso regression model shows a curvilinear pattern, where the misclassification error decreases rapidly as the number of features increases initially, but then levels off and begins to increase again as more features are added. This pattern suggests that there is an optimal number of features to include in the model, beyond which additional features add noise and decrease performance.**
+
+**This pattern emerges because the lasso regression method shrinks the coefficients of less informative or irrelevant features to zero, effectively performing feature selection. As the number of features increases, the model becomes more complex and more prone to overfitting, leading to decreased performance on the validation set. Therefore, there is a tradeoff between including informative features and avoiding overfitting, which results in the observed curvilinear pattern. The optimal number of features is identified as the value of lambda at the minimum or at the "1se" point, which represents the simplest model with acceptable performance.**
+
+
+b. Predict the scores for the remaining 500 reviews in the test set and then compute precision and recall for the positive category, the F1 score, and the accuracy. Do the results improve?
+
+```{r}
+
+# predict the scores for the remaining 500 reviews in the test set
+preds <- predict(cv_fit, dfm_moviesShuffled_trimmed[1501:2000, ], s = cv_fit$lambda.1se, type="class")
+
+# Turn into matrix
+cv_fit_matrix <- table(preds, test)
+
+# Flip the values in the table 
+cv_fit_matrix <- cv_fit_matrix[2:1, 2:1]
+
+precrecall(cv_fit_matrix, verbose=TRUE)
+
+
+```
+
+c. Look at the coefficients with the highest and lowest values in the best cross-validated model. What type of features is the classifier relying on to make predictions? Do you think this is a good model?
+
+```{r}
+# I got the following code from the "01-supervised_learning.Rmd" from the lab session
+
+# extract the coefficients for the best cross-validated model
+best.lambda <- which(cv_fit$lambda==cv_fit$lambda.1se)
+beta <- cv_fit$glmnet.fit$beta[,best.lambda]
+
+## identifying predictive features
+df <- data.frame(coef = as.numeric(beta),
+				word = names(beta), stringsAsFactors=F)
+
+df <- df[order(df$coef),]
+head(df[,c("coef", "word")], n=20)
+paste(df$word[1:20], collapse=", ")
+df <- df[order(df$coef, decreasing=TRUE),]
+head(df[,c("coef", "word")], n=20)
+paste(df$word[1:20], collapse=", ")
+
+```
+
+**The coefficients with the highest and lowest values in the best cross-validated model suggest that the classifier is relying on specific words to make predictions. The negative coefficients for words such as "ridiculous", "wasted", and "terrible" suggest that these words are associated with negative sentiment, while the positive coefficients for words such as "terrific", "hilarious", and "fantastic" suggest that these words are associated with positive sentiment.**
+
+**This model seems to be performing reasonably well, as it is able to identify words that are strongly associated with sentiment. However, it is difficult to assess the overall performance of the model without additional information, such as the accuracy or F1 score. Additionally, it's important to consider the limitations of using words as features, as they may not capture the full complexity of human language and sentiment.**
+
+4.  **(3 points) Classifying amicus briefs using Naive Bayes.**  
+
+This exercise uses *amicus curiae* briefs from US Supreme Court cases on affirmative action in college admissions. [(Evans et al 2007)](http://onlinelibrary.wiley.com/doi/10.1111/j.1740-1461.2007.00113.x/full).  [Amicus curiae](http://en.wikipedia.org/wiki/Amicus_curiae) are persons or organizations not party to a legal case who are permitted by the court to offer it advice in the form of an *amicus brief*. The amicus briefs in this corpus are from an affirmative action case in which an applicant to a university who was denied a place petitioned the Supreme Court, claiming that they were unfairly rejected because of affirmative action policies.  *Amicus curiae* could advise the court either in support of the petitioner, therefore opposing affirmative action, or in favour of the respondent — the University— therefore supporting affirmative action.  
+We will use the original briefs from the [Bolinger case](http://en.wikipedia.org/wiki/Grutter_v._Bollinger#Case_.28_Supreme_Court_.29) examined by Evans et al (2007) for the training set, and the amicus briefs as the test set.
+    
+```{r}
+data(data_corpus_amicus, package = "quanteda.corpora")
+summary(data_corpus_amicus, 5)
+```
+
+The first four texts will be our training set - these are already set in the docvars to the `amicusCorpus` object.  
+
+```{r}
+# set training class
+trainclass <- docvars(data_corpus_amicus, "trainclass")
+
+# set test class
+testclass  <- docvars(data_corpus_amicus, "testclass")
+
+```
+
+a. Construct a dfm, and then predict the test class values using the Naive Bayes classifer.
+
+```{r}
+
+# tokenize documents, remove stop words, remove punctuation, and convert all words to lowercase
+amicus_tokens <- tokens(data_corpus_amicus, remove_punct = TRUE, remove_numbers = TRUE,
+                 remove_symbols = TRUE) %>%
+  tokens_remove(stopwords("english")) %>%
+  tokens_tolower()
+
+# create a document-feature matrix (dfm)
+amicus_dmf <- dfm(amicus_tokens, tolower = FALSE)
+
+# train Naive Bayes classifier on training set
+nb_classifier <- textmodel_nb(amicus_dmf, trainclass)
+nb_pred <- predict(nb_classifier, amicus_dmf, type="class")
+
+```
+
+b.  Compute accuracy, precision, and recall for both categories
+    
+```{r}
+# create confusion matrix
+conf_mat <- table(nb_pred, testclass)
+
+# Compute accuracy, precision, and recall
+precrecall(conf_mat, verbose=TRUE)
+
+# Flip the matrix and compute accuracy, precision, and recall
+precrecall(conf_mat[2:1, 2:1], verbose=TRUE)
+
+
+```
+
+d. Now rerun steps 2-3 after weighting the dfm using *tf-idf*, and see if this improves prediction. What do you find?
+    
+```{r}
+
+# Weight the dfm using *tf-idf*
+amicus_dfmtf_idf <- amicus_dmf %>%
+  dfm_tfidf()
+
+# train Naive Bayes classifier on training set
+nb_classifier_dfmtf_idf <- textmodel_nb(amicus_dfmtf_idf , trainclass)
+nb_pred_dfmtf_idf <- predict(nb_classifier_dfmtf_idf, amicus_dfmtf_idf , type="class")
+
+# Create confusion matrix
+amicus_dfmtf_idf_mat <- table(nb_pred_dfmtf_idf, testclass)
+
+# Compute accuracy, precision, and recall
+precrecall(amicus_dfmtf_idf_mat, verbose=TRUE)
+
+# Flip it and compute accuracy, precision, and recall
+precrecall(amicus_dfmtf_idf_mat[2:1, 2:1], verbose=TRUE)
+
+```
+
+**After weighting the dfm using tf-idf, the prediction does not improve. The accuracy drops from 0.91 to 0.82, and the precision drops from 0.75 to 0.51. This means that the model is correctly identifying fewer cases of the positive class (the supportive briefs) while incorrectly identifying more cases of the negative class (the unsupportive briefs) as positive. This is likely due to the fact that tf-idf is down-weighting the importance of common words, which in this case, may actually be quite informative in distinguishing between the two classes of briefs.**
+
+**The results show that the Naive Bayes classifier performs better on the unweighted document-feature matrix. The accuracy, precision, recall, and F1-score are all higher for the unweighted data. The unweighted classifier achieves an accuracy of 0.91, precision of 0.75 and recall of 0.79 while the weighted classifier achieves an accuracy of 0.82, precision of 0.51 and recall of 0.95.**
+
+**This result is not entirely surprising since Naive Bayes assumes that the features (i.e., words) are independent and that their probabilities are equal across classes. However, weighting the data by tf-idf may disrupt these assumptions and cause the model to perform worse.**
+
+**Weighting by tf-idf normalises word frequencies by their inverse document frequency, which assigns a lower weight to words that appear in many documents. This weight may reduce the influence of words that are common across both classes and may not be discriminative. However, it may also overemphasize rare words that are only present in a few documents, which may lead to overfitting and reduce the model's generalisation performance.**
+
+**In this case, the unweighted classifier performs better, suggesting that the frequency of words in the documents provides sufficient information to discriminate between the two classes. However, this result may depend on the specific dataset and may not generalise to other text classification tasks.**

@@ -1,0 +1,216 @@
+---
+title: "Assignment 2 - part C"
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "##"
+)
+```
+
+```{r, echo = FALSE}
+library("quanteda", quietly = TRUE, warn.conflicts = FALSE, verbose = FALSE)
+```
+
+### 5. Applications of dictionary methods
+
+#### 5.A Populism dictionary (3 pts)
+
+Here we will create and implement the populism dictionary from Rooduijn, Matthijs, and Teun Pauwels (2011) "Measuring Populism: Comparing Two Methods of Content Analysis." *West European Politics* 34(6): 1272–83. We will use it to identify populist rhetoric in British parties' Facebook posts.
+
+We'll start by loading the data, which contains posts on the Facebook pages of the party and candidate for all five major British parties.
+
+```{r}
+library(quanteda)
+#download.file("https://github.com/lse-my459/pset_data/raw/master/FB-UK-parties.csv", 'FB-UK-parties.csv')
+uk <- read.csv("https://raw.githubusercontent.com/lse-my459/pset_data/master/FB-UK-parties.csv", stringsAsFactors = FALSE)
+table(uk$party)
+table(uk$name)
+```
+
+Appendix B of the paper provides the term entries for a dictionary key for the concept populism. We will implement this as a dictionary object with quanteda, and apply it to the UK Facebook posts. (Note that in the article they apply them to the party manifestos.)
+
+For your convenience, I already typed the list of populist words here:
+
+```{r}
+populist_dict <- dictionary(list(
+  populism = c(
+      "elit*",
+      "consensus*",
+      "undemocratic*",
+      "referend*",
+      "corrupt*",
+      "propagand*",
+      "politici*",
+      "*deceit*",
+      "*deceiv*",
+      "*betray*",
+      "shame*",
+      "scandal*",
+      "truth*",
+      "dishonest*",
+      "establishm*",
+      "ruling*")))
+
+```
+
+Now, create a corpus object with quanteda, and then group all the posts by a given party into a single DFM.
+
+```{r}
+ukCorpus <- corpus(uk$text)
+ukDfms <- lapply(split(ukCorpus, uk$party), tokens)
+ukDfms <- lapply(ukDfms, dfm)
+
+```
+
+Do you think it makes sense to normalize for document length in this context? If so, make sure you convert the DFM into proportions. If not, leave as is. Then, use `dfm_lookup` to identify the extent to which each party uses populist rhetoric on social media. What do you find?
+
+**YOUR ANSWER HERE**
+
+```{r}
+uk_corpus <- corpus(uk$text)
+uk_tokens <- tokens(uk_corpus)
+uk_dfm <- dfm(uk_tokens)
+uk_dfm_grouped <- dfm_group(uk_dfm, group = uk$party)
+
+# Normalize the DFM for document length
+uk_dfm_prop <- dfm(uk_dfm_grouped) / rowSums(uk_dfm_grouped)
+
+# Use dfm_lookup to identify the extent to which each party uses populist rhetoric
+uk_populist_rhetoric <- dfm_lookup(uk_dfm_prop, populist_dict)
+
+uk_populist_rhetoric
+```
+*Here, we are looking at the extent to which each party uses populist rhetoric on social media, which means we are interested in the number of times a particular word appears in a given post. So, normalising the DFM for document length would not be appropriate in this context. This is because the number of words in a document can vary greatly, and normalising the DFM will adjust for differences in document length, providing a more accurate representation of the proportion of words that belong to each feature.*
+
+*These results suggest that the UK Independence Party (UKIP) uses populist rhetoric the most among the five major British parties on social media, as indicated by the highest proportion of populist words in their Facebook posts (0.003116). The Scottish National Party (SNP) has the second-highest proportion of populist words (0.001876), followed by the Liberal Democrats (0.001086), the Labour Party (0.000952), and the Conservative and Unionist Party (0.000963).*
+
+
+We will now discuss the _precision_ of your dictionary. Use the `kwic()` function to find instances of each of the dictionary terms above in this corpus. Do you think most instances do indeed refer to populist rhetoric?
+
+**YOUR ANSWER HERE**
+
+```{r}
+uk_corpus <- corpus(uk$text)
+uk_tokens <- tokens(uk_corpus)
+uk_dfm <- dfm(uk_tokens)
+
+# Limited the display of the results otherwise output is too long. 
+head(kwic(uk_tokens, pattern = populist_dict, window = 5))
+```
+
+*I would argue that a large number of the instances of words used in the dictionary were not used in a populist context. For example, the use of referendum appears the most commonly in the first 100 rows, relating to the EU and Scottish referendum, however they do not appear to be populist in nature, merely citing further information on the bills. However, it is clear some of the words are used in a popular context,  appealing to emotion and talking negatively about the (then) current political system and politicians in power. For example,  "why wont he support a referendum to support the people", "cut the NHS budget betraying the people of Wales" and "trade union bosses have betrayed working people in this country".*
+
+What about recall? Are there any relevant words that were excluded? Use `kwic()` to think through potential new words you may want to add, and re-run the analysis. Do the results change?
+
+
+**YOUR ANSWER HERE**
+
+```{r}
+# Use kwic() to search for potentially relevant words
+# Limited the display of the results otherwise output is too long. 
+head(kwic(uk_tokens, pattern = "lie*", window = 5))
+head(kwic(uk_tokens, pattern = "cheat*", window = 5))
+head(kwic(uk_tokens, pattern = "fraud*", window = 5))
+head(kwic(uk_tokens, pattern = "delusional*", window = 5))
+head(kwic(uk_tokens, pattern = "people*", window = 5))
+
+
+# Add new terms to the dictionary
+populist_dict$populism <- c(populist_dict$populism, "lie*", "cheat*", "fraud*", "delusional*", "people*")
+
+# Re-run the analysis
+head(kwic(uk_tokens, pattern = populist_dict, window = 5))
+
+```
+
+*With the addition of the five words to the dictionary, the results do appear to change. The use of people seems to occur more commonly in the first 100 rows, overtaking referendum in the first kwic. Indeed, the use of people seems to be mostly in a negative, and thus populist, context, with sentences such as; "he is campaigning against innocent people's DNA being retained indefinitely", "explains why people in the North want action" and "to cut crime and give people a greater say and influence". The addition of the other four words, however, does not appear to change the dictionary in any meaningful way, with few mentions compared to "people" and "referendum". * 
+
+Media accounts have often depicted Jeremy Corbyn as a populist leader. If that's the case, we may expect to find that his Facebook posts tend to rely more often on populist rhetoric than Labour's Facebook page. Is that observation supported by the data? Write similar code as above to answer this question.
+
+**YOUR ANSWER HERE**
+
+```{r}
+
+# subset data for Labour party and Jeremy Corbyn
+labour <- subset(uk, party == "labour party")
+corbyn <- subset(uk, name == "Jeremy Corbyn")
+
+# create the corpus and tokens
+corbyn_corpus <- corpus(corbyn$text)
+labour_corpus <- corpus(labour$text)
+
+corbyn_tokens <- tokens(corbyn_corpus, remove_punct = TRUE, remove_numbers = TRUE, remove_symbols = TRUE)
+labour_tokens <- tokens(labour_corpus, remove_punct = TRUE, remove_numbers = TRUE, remove_symbols = TRUE)
+
+# calculate the frequency of populist words in each corpus
+corbyn_populist_freq <- sum(dfm(corbyn_tokens) %>% dfm_select(pattern = populist_dict))
+labour_populist_freq <- sum(dfm(labour_tokens) %>% dfm_select(pattern = populist_dict))
+
+# print the frequencies
+cat("Frequency of populist words for Jeremy Corbyn:", corbyn_populist_freq, "\n")
+cat("Frequency of populist words for Labour party:", labour_populist_freq, "\n")
+
+
+```
+
+*Based on the code and data provided, the frequency of populist words for Jeremy Corbyn is 137 and the frequency of populist words for the Labour party is 240. Therefore, it appears that the Labour party's Facebook page relies more often on populist rhetoric than Jeremy Corbyn's Facebook posts, which is opposite to the expectation stated in the question.*
+
+*However, it's important to note that this analysis only considers the frequency of words within a pre-defined dictionary of populist terms, and it doesn't take into account other factors such as the context and tone of the posts. Additionally, the concept of "populism" can be subjective and there may be disagreements on which words or phrases qualify as populist. Therefore, this analysis should be taken with a grain of salt and further interpretation may require a more nuanced analysis.*
+
+
+#### 5.B. Fun with the Regressive Imagery Dictionary (3 pts)
+
+Try analyzing the inaugural speeches from 1980 onward using the Regressive Imagery Dictionary, from Martindale, C. (1975) *Romantic progression: The psychology of literary history.* Washington, D.C.: Hemisphere.
+
+The dictionary is available in the `quanteda.dictionaries` package as `data_dictionary_RID`.
+
+Compare the Presidents based on the level of "Icarian Imagery." Which president is the most Icarian?
+
+**YOUR ANSWER HERE**
+
+```{r}
+# Install and load packages
+devtools::install_github("kbenoit/quanteda.dictionaries") 
+library(quanteda)
+library(quanteda.dictionaries)
+library(tidyverse)
+# Load corpus and data dictionary
+data("data_corpus_inaugural")
+data("data_dictionary_RID")
+
+# Subset corpus to include only speeches from 1980 onward
+corp <- corpus_subset(data_corpus_inaugural, Year >= 1980)
+
+# Define a list of RID categories that correspond to Icarian imagery
+icarian_rid_categories <- data_dictionary_RID$PRIMARY$ICARIAN_IM
+
+# Convert the corpus to a document-feature matrix with RID categories as features
+dfm_rid <- dfm(corp, dictionary = icarian_rid_categories, concatenator = " ", remove_punct = TRUE, remove_numbers = TRUE, remove = stopwords("english"))
+
+# Select the columns of dfm_rid that correspond to the Icarian imagery categories
+dfm_icarian <- dfm_select(dfm_rid, pattern = icarian_rid_categories)
+
+# Convert the RID categories in the dfm to a data frame and count their frequency in each document
+rid_counts <- convert(dfm_icarian, to = "data.frame") %>%
+  mutate(doc_id = docnames(dfm_icarian)) %>%
+  pivot_longer(-doc_id, names_to = "category", values_to = "count") %>%
+  group_by(doc_id, category) %>%
+  summarize(count = sum(count)) %>%
+  ungroup()
+
+# Calculate the total frequency of Icarian imagery in each speech
+icarian_totals <- rid_counts %>%
+  group_by(doc_id) %>%
+  summarize(total_count = sum(count))
+
+# Sort the speeches by total frequency of Icarian imagery
+icarian_totals %>% arrange(desc(total_count))
+
+```
+
+*Icarian Imagery includes words relating to ascending, height, descending, depth, fire and water (KCS, 2023). Looking at the inaugural speeches of Presidents, the top five speeches containing Icarian Imagery were from Clinton, Obama, Reagan, Bush and Bush. All of these speeches were pre-2010, suggesting that the majority of Presidents before 2010 used primordial content in their speeches. Indeed, there is evidence of Presidents during this period who held two terms increasing their use of Icarian imagery in their second inaugural speech. For example, both Clinton and Bush (Jnr) increased their use of Icarian imagery from 22 and 14 in their first speeches to 33 and 24 in their second speeches. On the contrary, the last five speeches include the most recent US Presidents (Obama, Trump, Biden), suggesting as we have moved further into modern day, Presidents have felt a decreasing need for the use of primordial content. This can be shown with Obama's use of Icarian imagery decreasing from 32 in his 2009 inaugural speech to 22 in 2013.* *https://www.kovcomp.co.uk/wordstat/RID.html*
+
+
+

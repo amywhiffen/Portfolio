@@ -1,0 +1,183 @@
+---
+title: "Problem Set 4 - Part A"
+output: html_document
+---
+
+```{r, echo = FALSE}
+library("quanteda", quietly = TRUE, warn.conflicts = FALSE, verbose = FALSE)
+#library(quanteda.corpora)
+#library(quanteda.dictionaries)
+library(quanteda.textmodels)
+library(quanteda.textplots)
+library(quanteda.textstats)
+library(ggplot2)
+library(tidyverse)
+library(ggrepel)
+library(scales)
+```
+
+### Unsupervised methods
+
+In this part of the assignment, you will use R to understand and apply unsupervised document scaling.
+
+#### 1. **Unsupervised scaling of the Irish budget corpus scaling**. Use the `data_corpus_irishbudget2010` in **quanteda** for this.
+
+1.a) Fit a wordfish model of all the documents in this corpus. Apply any required preprocessing steps first. Use the `textplot_scale1d` function to visualize the result. (You may want to use the advanced options of this function to get a better plot than just the default one.)
+
+What do you learn about what the dimension is capturing? You can use wikipedia to learn about the Irish parties involved in this debate to help you answer this question.
+
+```{r}
+# loading data
+data(data_corpus_irishbudget2010)
+# changing document names
+docnames(data_corpus_irishbudget2010)  <- paste(
+  docvars(data_corpus_irishbudget2010, "name"),
+  docvars(data_corpus_irishbudget2010, "party") )
+# creating DFM
+budget_dfm <- dfm(data_corpus_irishbudget2010)
+# fitting wordfish
+wfFit <- textmodel_wordfish(budget_dfm, dir=c(2,1))
+# looking at results
+sort(predict(wfFit))
+# extracting rest of parameters
+str(coef(wfFit))
+# let's look at the word-level parameters
+sw <- data.frame(word = wfFit$features, beta = wfFit$beta, psi = wfFit$psi)
+sw <- sw[order(sw$beta),] # discrimination
+head(sw, n=20)
+tail(sw, n=20)
+
+sw <- sw[order(sw$psi),] # frequency
+head(sw, n=20)
+tail(sw, n=20)
+```
+
+```{r fig.height=6, fig.width=9}
+# Print wfFit$docs to see the order of the docs to change the names in doclabels
+# Create a modified vector for the doclabels in the plot
+vector <- c("Lenihan (FM)", "Bruton", "Burton", "Morgan", "Cowen (PM)", "Kenny", "O'Donnell", "Gilmore", "Higgins", "Quinn", "Gormley", "Ryan", "Cuffe", "O'Caolain")
+# Use textplot_scale1d
+textplot_scale1d(
+  # x is the predicted model; the wordfish
+  x = wfFit,
+  # We want to plot the documents. "features" would be the Eiffel Tower plot
+  margin = c("documents"),
+  # Doclabels are already informative, no need to change
+  doclabels = vector,
+  # It is very important to keep the sorting
+  sort = TRUE,
+  # We can add group information; sorting would be per group now
+  groups = docvars(data_corpus_irishbudget2010, "party"),
+  # The other options available are for cases when margin = "features"
+  # Add an informative title, subtititle, and caption
+) + labs(title = "Latent Ideological Dimension (LDA) of Speeches for the 2010 Irish Budget",
+         subtitle = "LDA of speakers grouped by political parties",
+         caption = "Note: (FM) means Finance Minister; (PM) means Prime Minister")
+
+```
+
+*This plot shows the latent ideological dimension of speeches for the 2010 Irish Budget. In the y axes we can see the name of the politicians and their political party, and in the x axis the ideological dimension (right towards the right, and left wing in the left). The ideological dimension is captured from using a scaling statistical model (wordfish model) on the speeches, which have first been pre-processed as a dfm. It estimates the ideological positions based on word frequencies (Slapin and Proksch 2008).*
+
+*Having researched on the 2010 Irish Budget, the plot seems to accurately represent the actual ideological positions. At the time, the budget was the harshest one imposed in Irish history and the debates were internationally acknowledged for being harsh as well (Lowe Bennoit, 2013). Pro-budget were Prime Minister (Taoiseach) Cowen (FF) and Finance Minister Lenihan (FF). Green party recluctantly agreed because of the coallition with FF, ministers Gormley, Cuffe and Ryan. Opposition were FG and Labour and anti-system SF. The unsupervised textual analysis shows this information, so we can conclude that it accurately captures ideological positions.*
+
+1.b) Plot the wordfish "Eiffel Tower" plot (as in Figure 2 of Slapin and Proksch 2008), from the wordfish object. You can do this using the `textplot_scale1d` function or (even better) using the more advanced code we used in the lecture.
+
+```{r fig.height=6, fig.width=9}
+# We have decided to use textplot_scale1d
+textplot_scale1d(
+  x = wfFit, # wordfish fitted model
+  margin = "features", # choose either documents or features
+  doclabels = NULL, # change names of document labels, where length(doclabels) == length(x), or NULL if no changes
+  sort = TRUE, # keep the same
+  groups = NULL, 
+  highlighted = c("societies", "citizenship", "men", "consensus", "speed", "productivity", "boost", "incetive", "families", "money", "balance"),
+  alpha = 0.7,
+  highlighted_color = "red") + labs(title = "Latent Ideological Dimension (LDA) of words used in the 2010 Irish Budget",
+         subtitle = "LDA of features used in the 2010 Irish Budget discussion",
+         x = "estimated beta: feature marginal effects",
+         y = "estimated psi: word fixed effects")
+  
+
+```
+
+*We decided to use texplot_scaled1d because it allows to highlight interesting words in the plot. For this exercise we used two different plots, one to show the words used by politicians depending their LDA. We can see how words associated with the community and the society are associated with a negative LDA, whereas words such as productivity and boost, typically associated with neoliberal capitalism ideology, are words with a very positive LDA. In the middle we also find words that are very relevant to budget discussions such as money, families, and balance, but  this words are not associated with any extreme LDA value, which means they are as likely to be used regardless of the political ideology and frequency, as the frequency is explained by the y values. Moreover, money and families are one of the most frequent terms.*  
+
+1.c) Plot the log of the length in tokens of each text against the alpha-hat from `wfFit`. What does the relationship indicate?
+
+```{r fig.height=6, fig.width=9}
+# calculate log of length of tokens per document
+doc_lengths <- sapply(docnames(budget_dfm), function(x) sum(dfm_subset(budget_dfm, docnames(budget_dfm) == x)))
+log_lengths <- log(doc_lengths)
+
+# create data frame
+df <- data.frame(alpha_hat = wfFit$alpha, log_length = log_lengths)
+df$names <- rownames(df)
+
+# separate names column into two columns
+df <- separate(df, names, into = c("names", "party"), sep = " ")
+
+# reorder columns
+df <- df[, c("names", "party", "alpha_hat", "log_length")]
+
+# plot with color by party and labels for name
+ggplot(df, aes(x = alpha_hat, y = log_length, color = party, label = names)) +
+  geom_point(size = 2) +
+  labs(title = "Estimated fixed effects and number of different words used",
+       subtitle = "Clear positive relation between alpha hat and token lenght",
+       x = "alpha hat: estimated document fixed effects",
+       y = "log(length) of tokens per speech") +
+  geom_text_repel(show.legend = FALSE) +
+  theme(legend.position = "top")
+```
+
+*The plot shows a clear positive relationship between the estimated alphas in the model, which indicate the estimated document fixed effects, and the length of tokens per speech. This makes sense because the estimated document fixed effects (alpha) is related with the latent dimension of the text, and therefore related to the number of concepts covered in each document (speech in this case). Thus, the number of unique words provides a good proxy for alpha, and the number of unique words is associated with the tokens in this case.*
+
+1.d) Plot the log of the frequency of the top most frequent 1000 words against the same psi-hat values from `wfit`, and describe the relationship.
+
+```{r, fig.width = 5, fig.height = 5}
+
+# create DFM
+ieDfm <- data_corpus_irishbudget2010 %>%
+  corpus_subset(party %in% c("FF", "FG", "LAB", "GP", "SF")) %>%
+  tokens(remove_punct = TRUE, remove_numbers = TRUE, remove_symbols = TRUE) %>%
+  tokens_remove(stopwords("english")) %>%
+  dfm()
+
+# select top most frequent 1000 words
+ieDfm_ <- ieDfm %>% 
+  textstat_frequency(n = 1000)
+
+# select top psi words from wfFit
+top_words <- as.vector(ieDfm_$feature)
+psi_all <- as.data.frame(cbind(feature = wfFit[["features"]], psi = wfFit[["psi"]]))
+psi <- psi_all[psi_all$feature %in% top_words, ]
+
+# merge
+freq_psi <- merge(ieDfm_, psi, by=c("feature","feature"))
+freq_psi$psi = as.numeric(freq_psi$psi)
+
+# ggplot
+ggplot(freq_psi, aes(x = psi, y = frequency)) +
+  geom_point() +
+  scale_y_continuous(trans = log2_trans()) +
+  scale_x_continuous(breaks = seq(from = -5, to = 5, by = 1))
+```
+
+*This plots the frequency of a word (number of times a word appears in the corpus of speeches) against psi which estimates the latent dimensions of ideology underlying a text. We can see a clear positive relationship between these two variables, which means that words that have little frequency in texts have little psi value, and when they have high frequency the psi value is also high.*
+
+#### 2. **Fit the correspondence analysis model to the Irish budget speeches.**
+
+Compare the results for the word scaled values (call it `caFit`) from the first dimension to the beta-hats from `wfFit`.
+
+```{r fig.height=6, fig.width=9}
+# fitting correspondence analysis
+# One dimension
+caFit <- textmodel_ca(budget_dfm, nd=1) 
+
+# plot the data points and linear regression line
+plot(wfFit$beta, caFit$colcoord, xlab="Wordfish beta-hat", ylab="CA word scale values",
+     main="Comparison between Correspondence Analysis (CA) and Wordfish (WF) models")
+
+```
+
+*There seems to be a clear positive and sigmoid relationship between the beta hats from the Wordfish models and the word scaled values of the correspondence analysis. Apparently, the Wordfish model is collapsing highly common words, resulting in a more compressed range of beta values for those features. In contrast, the Correspondence Analysis is spreading out the range of word scaled values more evenly across all features, resulting in a smoother distribution of values.*
