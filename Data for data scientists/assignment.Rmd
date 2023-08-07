@@ -1,0 +1,838 @@
+---
+title: 'MY472: Final assignment 2022/23'
+output: html_document
+---
+
+__Please do not write your name into this document.__
+
+
+In the open-ended Exercises 2, 5, and 7, more extensive, carefully crafted, polished, insightful, and well motivated and explained answers will receive higher marks. Also see the assessment criteria on the course website https://lse-my472.github.io/
+
+
+```{r}
+# Load any libraries you use in the assignment here
+library(dplyr)
+library(ggplot2)
+library(plotly)
+library(httr)
+library(lubridate)
+library(jsonlite)
+library(dplyr)
+library(DBI)
+library(RSQLite)
+library(dbplyr)
+library(scales)
+library(ggpubr)
+library(tidyverse)
+library(gridExtra)
+library(rvest)
+library(stopwords)
+library(wordcloud)
+library(DBI)
+
+```
+
+
+### Exercise 1 (4 points)
+
+Using the file `posts.csv` in the data folder of this repo (the sample of 10,000 public Facebook posts by members of the US congress from 2017), solve the following with `dplyr`:
+
+- Do not consider posts with zero likes
+- Compute the comment to like ratio (i.e.  comments_count / likes_count) for each post and store it in a column `clr`
+- For each `screen_name`, compute a `normaliser_based_on_even_months = max(clr) - min(clr)`, i.e. the maximum minus the minimum `clr` value of posts by that `screen_name`, however, only taking into account __the posts made in even months, i.e. posts made in in February, April, June, August, October, December__ when computing `max(clr) - min(clr)` for each `screen_name`
+- Set all `normaliser_based_on_even_months` that have a value of zero to NA or delete them
+- Afterwards create a column `normalised_clr` which stores the `clr` of all posts from the original data frame (other than those with zero likes which were deleted in the first step) divided by the `normaliser_based_on_even_months` of the associated screen name. The only exception are posts from screen names that had a `normaliser_based_on_even_months` value of zero and were deleted/set to NA before -- for these posts just set the value in `normalised_clr` to NA as well or drop the post from the final data frame. In other words, the value of a single post/line $i$ (written by a politician $p$) in that `normalised_clr` column can be computed as: $normalised\_clr_{i,p} = clr_{i} \; / \; normaliser\_based\_on\_even\_months_{p}$ for all observations for which there is a non-NA `normaliser_based_on_even_months` (no need to use a loop for this though, `dplyr` allows to compute it in a vectorised way)
+- Keep only those rows with `normalised_clr` > 0
+- Arrange the data frame according to `normalised_clr` in ascending order
+- Print out only `screen_name` and `normalised_clr` for the first 10 rows, i.e. the posts with the 10 lowest `normalised_clr`
+
+```{r}
+# Read in the data from the posts.csv file
+
+df <- read.csv("/Users/amywhiffen/Documents/LSE/MY472 - Data for Data Scientists /Assignments/final-assignment-amywhiffen/data/posts.csv")
+
+# Filter out posts with zero likes
+df_filtered <- df %>% 
+  filter(likes_count > 0)
+
+# Compute the comment to like ratio (clr) for each post
+df_filtered <- df_filtered %>% mutate(clr = comments_count / likes_count)
+
+# Select only the posts made in even months
+df_even <- df_filtered %>% 
+  filter(month(date) %% 2 == 0)
+
+# Compute the normaliser based on even months for each screen_name
+normalisers <- df_even %>% 
+  group_by(screen_name) %>% 
+  summarise(normaliser_based_on_even_months = max(clr) - min(clr))
+
+# Remove rows with normaliser_based_on_even_months = 0
+normalisers <- normalisers %>% 
+  filter(normaliser_based_on_even_months != 0)
+
+# Join the normalisers data frame with the original data frame
+df_filtered <- left_join(df_filtered, 
+                         normalisers, by = "screen_name")
+
+# Compute the normalised clr for each post
+df_filtered <- df_filtered %>% 
+  mutate(normalised_clr = ifelse(is.na(normaliser_based_on_even_months), 
+                                 NA, clr / normaliser_based_on_even_months))
+
+# Filter out rows with normalised_clr = 0
+df_filtered <- df_filtered %>% 
+  filter(normalised_clr > 0)
+
+# Arrange the data frame according to normalised_clr in ascending order
+df_filtered <- df_filtered %>% 
+  arrange(normalised_clr)
+
+# Print out only screen_name and normalised_clr for the first 10 rows
+head(df_filtered[, c("screen_name", "normalised_clr")], 10)
+
+
+```
+
+Hint: Any approach that yields the correct output here will receive full points, whether it uses multiple steps, merges, etc.
+
+
+### Exercise 2 (15 points)
+
+After the `dplyr` warm-up in the previous exercise, the next task will be to apply your knowledge of `dplyr` and other packages to an interesting real world-example with more extensive tabular data. Since 2021, there has been a much discussed rise in inflation in many economies. Often only a single number for inflation is computed and reported. It typically is the price change of an average basket of goods. "Basket" here just describes a set of goods with weights in which an average consumer approximately buys them. With the weights and prices of the individual goods, a price for the basket can be computed. The number for inflation is then the change of the basket's price over time.
+
+There are many potential limitations of such an aggregate inflation figure. For example, businesses might be most interested in price changes only in their sectors. Furthermore, when prices of individual goods change in different ways, consumers will likely change the weights in which they buy goods. Hence, those aggregate inflation figures which keep the basket weights fixed for some time before reweighting, begin to deviate from the proportions in which people actually buy goods on average and become inaccurate. Also, while some goods see strong rises in prices, others do not. As a result, those consumers who buy goods in proportions far from the average consumer can face very different inflation figures. Taking all this into account, it can therefore be very interesting to analyse price changes of individual goods, smaller bundles of goods, etc. over time rather than only one aggregate number. Such findings can e.g. be helpful for researchers, businesses, consumers, or policy makers.
+
+Since some years, the UK Office of National Statistics publishes detailed price data of goods which you can find [here](https://www.ons.gov.uk/economy/inflationandpriceindices/datasets/consumerpriceindicescpiandretailpricesindexrpiitemindicesandpricequotes). The website also contains extensive documentation. Download the csv file for "Price quotes, October 2022 edition of this dataset" (the correct file should be around 13MB), and the same for October 2021 and October 2020 (this e.g. allows to compute price changes from year to year, but you can also download additional/different months if helpful for your analysis). Explore the data, reshape and process it, and think of ways in which you can analyse and visualise it with packages such as `ggplot2` or `plotly`. You could e.g. look at prices of some goods vs. services, energy, how prices moved during different stages of the pandemic, etc. Thus, the answer can analyse prices changes for different goods and/or bundles of goods over time, report summary figures, and contain different visualisations. Also describe your analysis through written text via markdown. Did you find/learn anything interesting?
+
+Note: As the downloaded data can quickly become too large for GitHub, you can store them outside your repository and load them from there along the lines of `read_csv(some/path/to/somefile.csv)`.
+
+```{r}
+options(dplyr.summarise.inform = FALSE)
+
+# Read in the data for October 2022
+prices_2022 <- read.csv("/Users/amywhiffen/Documents/LSE/MY472 - Data for Data Scientists /Assignments/pricequotes-2022-10.csv")
+
+# Read in the data for October 2021
+prices_2021 <- read.csv("/Users/amywhiffen/Documents/LSE/MY472 - Data for Data Scientists /Assignments/pricequotes-2021-10.csv")
+
+# Read in the data for October 2020
+prices_2020 <- read.csv("/Users/amywhiffen/Documents/LSE/MY472 - Data for Data Scientists /Assignments/pricequotes-2020-10.csv")
+
+# Filter our all of the £0 prices
+prices_2020 <- prices_2020 %>%
+  filter(PRICE != 0)
+
+prices_2021 <- prices_2021 %>%
+  filter(PRICE != 0)
+
+prices_2022 <- prices_2022 %>%
+  filter(PRICE != 0)
+
+# Filter out smokeless fuel prices
+oct_2020_fuel <- prices_2020 %>%
+  filter(ITEM_DESC == "SMOKELESS FUEL 50KG")
+
+oct_2021_fuel <- prices_2021 %>%
+ filter(ITEM_DESC == "SMOKELESS FUEL 50KG")
+
+oct_2022_fuel <- prices_2022 %>%
+  filter(ITEM_DESC == "SMOKELESS FUEL 50KG")
+
+# Filter out flour prices
+oct_2020_flour <- prices_2020 %>%
+ filter(ITEM_DESC == "FLOUR-SELF-RAISING-1.5KG")
+
+oct_2021_flour <- prices_2021 %>%
+  filter(ITEM_DESC == "FLOUR-SELF-RAISING-1.5KG")
+
+oct_2022_flour <- prices_2022 %>%
+ filter(ITEM_DESC == "FLOUR-SELF-RAISING-1.5KG")
+
+# Find the mean price of fuel
+mean_prices_fuel_20 <- oct_2020_fuel %>%
+  group_by(ITEM_DESC, QUOTE_DATE) %>%
+  summarize(Mean_price = mean(PRICE))
+
+mean_prices_fuel_21 <- oct_2021_fuel %>%
+  group_by(ITEM_DESC, QUOTE_DATE) %>%
+  summarize(Mean_price = mean(PRICE))
+
+mean_prices_fuel_22 <- oct_2022_fuel %>%
+  group_by(ITEM_DESC, QUOTE_DATE) %>%
+  summarize(Mean_price = mean(PRICE))
+
+# Find the mean price of flour 
+mean_prices_flour_20 <- oct_2020_flour %>%
+  group_by(ITEM_DESC, QUOTE_DATE) %>%
+  summarize(Mean_price = mean(PRICE))
+
+mean_prices_flour_21 <- oct_2021_flour %>%
+  group_by(ITEM_DESC, QUOTE_DATE) %>%
+  summarize(Mean_price = mean(PRICE))
+
+mean_prices_flour_22 <- oct_2022_flour %>%
+  group_by(ITEM_DESC, QUOTE_DATE) %>%
+  summarize(Mean_price = mean(PRICE))
+
+# Bind the data into two seperate data frames
+
+all_data_fuel <- bind_rows(mean_prices_fuel_20, 
+                           mean_prices_fuel_21, 
+                           mean_prices_fuel_22)
+
+all_data_flour <- bind_rows(mean_prices_flour_20, 
+                            mean_prices_flour_21, 
+                            mean_prices_flour_22)
+
+# Create first bar plot 
+plot1 <- ggplot(all_data_fuel, aes(x = QUOTE_DATE, y = Mean_price, fill = ITEM_DESC)) +
+  geom_bar(stat = "identity") +
+  scale_y_continuous(labels = dollar_format(prefix = "£")) +
+  labs(title = "Mean prices by year for 50kg of smokeless fuel", 
+       x = "Year", 
+       y = "Mean price",
+       fill = 'Item') +
+  theme(axis.title = element_text(size = 8, face = "bold"), 
+        plot.subtitle = element_text(size = 6), 
+        axis.text = element_text(size = 8),
+        plot.title = element_text(size = 8, face = "bold"),
+        legend.title = element_text(size = 7, face = 'bold'), 
+        legend.text = element_text(size = 7),
+        legend.key.size = unit(0.35, "cm"),
+        axis.text.x = element_text(angle = 70, vjust = 0.5, hjust=0.5)) +
+  scale_x_continuous(breaks = c(202000, 202100, 202200), 
+                     labels = c("October 2020", "October 2021", "October 2022")) +
+  scale_fill_manual(labels = c("50kg of smokeless\n fuel"), 
+                    values = c('cadetblue4'))
+  
+
+# Create the second bar plot
+plot2 <- ggplot(all_data_flour, aes(x = QUOTE_DATE, y = Mean_price, fill = ITEM_DESC)) +
+  geom_bar(stat = "identity") +
+  scale_y_continuous(labels = dollar_format(prefix = "£")) +
+  labs(title = "Mean prices by year for 1.5kg self-raising flour", 
+       x = "Year", 
+       y = "Mean price",
+       fill = 'Item') +
+  theme(axis.title = element_text(size = 8, face = "bold"), 
+        plot.subtitle = element_text(size = 6), 
+        axis.text = element_text(size = 8),
+        plot.title = element_text(size = 8, face = "bold"),
+        legend.title = element_text(size = 7, face = 'bold'), 
+        legend.text = element_text(size = 7),
+        legend.key.size = unit(0.35, "cm"),
+        axis.text.x = element_text(angle = 70, vjust = 0.5, hjust=0.5)) +
+  scale_x_continuous(breaks = c(202000, 202100, 202200), 
+                     labels = c("October 2020", "October 2021", "October 2022")) +
+  scale_fill_manual(labels = c("1.5kg self-raising\n flour"), 
+                    values = c('cadetblue3'))
+
+# Arrange the plots in a 1x2 grid
+grid.arrange(plot1, plot2, nrow = 1)
+
+
+
+```
+
+
+Considering that the United Kingdom imports a substantial amount of coal from Russia and wheat from both. Ukraine and Russia, I wanted to examine the average price change of smokeless fuel (coal) and flour over the past three years. I was particularly interested in the effect of the Ukraine-Russia conflict on the price. As seen in the graph above, the price of smokeless fuel increased marginally between October 2020 and October 2021, by an average of £0.25. Nonetheless, there was a £9.15 increase between October 2021 and October 2022. Between October 2020 and October 2021, the price of flour decreased by £0.05, but increased by £0.14 between October 2021 and 2022. 
+
+The fact that there was little change between October 2020 and October 2021 and a significant increase between October 2021 and October 2022 for both smokeless fuel and flour, as well as Ukraine and Russia's role in exporting these products to the United Kingdom. One could argue that the war is responsible for this increase.
+
+### Exercise 3 (10 points)
+
+Use `ggplot2` to try to replicate the following [plot](https://ourworldindata.org/grapher/artificial-intelligence-parameter-count) on parameter numbers in AI systems from Our World in Data. Start with the basic features of the plot and then try to get as close to the original as possible with `ggplot2`. __There is no need to animate the plot, just use the latest static plot and replicate that.__ As the data might change over time, feel free to download the image version from the website that you are going to replicate. Then you can add this image into the repo and afterwards bind it into this markdown e.g. with `![](imagename.png)` as a reference below your own plot.
+
+Note: When you click on `DOWNLOAD` below the plot on the [website](https://ourworldindata.org/grapher/artificial-intelligence-parameter-count), you can download the latest image as well as all data.
+
+
+```{r}
+data_parameters <- read.csv("/Users/amywhiffen/Documents/LSE/MY472 - Data for Data Scientists /Assignments/artificial-intelligence-parameter-count.csv")
+
+data_parameters  <- data_parameters [!is.na(data_parameters$Parameters),]
+
+data_parameters  <- data_parameters  %>%
+  select(Entity, Day, Parameters, Domain)
+
+data_parameters$Day <- as.Date(data_parameters$Day)
+
+my_colours <- c('#6d3e91', '#c05917', '#58ac8c','#286bbb', '#883039', '#bc8e5a', '#00295a', '#c15065', '#18470f', '#9a5129', '#37aaba', '#578145')
+
+ggplot(data = data_parameters , aes(x = Day, y = Parameters, colour = Domain, label=Entity)) +
+  geom_point(size = 1) +
+  geom_point(shape=1, size = 1,colour = "black", stroke = 0.1)+
+  labs(title = "Number of parameters in notable artificial intelligence systems", 
+       subtitle = "Parameters are variables in an Al system whose values are adjusted during training to establish how input data gets\ntransformed into the desired output; for example, the connection weights in an artificial neural network.",
+       x = "Publication date",
+       y = "Parameters",
+       colour = 'Task Domain') + 
+   scale_y_log10(breaks = c(100, 1000, 10000, 
+                            100000, 1e6, 1e7, 
+                            1e8, 1e9, 1e10, 1e11, 1e12),
+              labels = c('100', '1,000', '10,000', 
+                         '100,000', '1 million', 
+                         '10 million', '100 million', 
+                         '1 billion', '10 billion', 
+                         '100 billion', '1 trillion')) +
+  scale_x_date(breaks = c(as.Date('1950-07-02'), 
+                          as.Date('1978-12-27'), 
+                          as.Date('1992-09-04'), 
+                          as.Date('2006-03-14')),
+               labels = c("Jul 2, 1950", 
+                          "Dec 27, 1978", 
+                          "Sep 4, 1992", 
+                          "May 14, 2006")) +
+ geom_text(aes(label = ifelse(Entity == "GShard(600B)" | Entity == "DLRM-2020" | Entity == "Word2Vec (large)" | Entity == "MoE" | Entity == "GPT-2" | Entity == "GNMT" | Entity == "GroupLens" | Entity == "Hiero" | Entity == "DroPOUt(TIMIT)" | Entity == "NPLM" | Entity == "Feedforward NN" | Entity == "IBM-5" | Entity == "Deep Belief Nets" | Entity == "Neocognitron" | Entity == "DIABETES" | Entity == "BiLSTM for Speech" | Entity == "LeNet-5" | Entity == "DrLIM" | Entity == "Mitosis" | Entity == "NetTalk"| Entity == "Kohonen network" | Entity == "System 11" | Entity == "Fuzzy NN" | Entity == "Self Organizing System" | Entity == "ASE+ACE" | Entity == "SACHS" | Entity == "Pandemonium (morse)" | Entity == "Peephole LSTM" | Entity == "Theseus" | Entity == "Samuel Neural Checkers", Entity, "")), show.legend = F, size = 2.5, hjust = "inward" ,nudge_y = 0.3) +
+  theme_minimal()+
+  theme(strip.text = element_text(size = 6), 
+        axis.title = element_text(size = 8), 
+        plot.subtitle = element_text(size = 7), 
+        axis.text = element_text(size = 8),
+        plot.title = element_text(size = 12), 
+        axis.line = element_blank(), 
+        axis.ticks = element_blank(),
+        legend.title = element_text(size = 10, face = 'bold'), 
+        legend.text = element_text(size = 10),
+        legend.key.size = unit(0.4, "cm")) + 
+  grids(linetype = "dotted", color = "grey") + 
+  scale_colour_manual(values = my_colours) +
+ guides(colour = guide_legend(override.aes = list(shape = 15, size = 3)))
+
+
+
+
+```
+![This is the graph I was trying to replicate.](/Users/amywhiffen/Documents/artificial-intelligence-parameter-count.png)
+
+### Exercise 4 (7 points)
+
+When analysing textual data, the approaches we discussed such as counting tokens and building dictionaries, are already sufficient to answer many research questions. When the goal is to obtain an overview of information contained in unstructured textual data, however, some additional approaches such as ["named-entity linking"](https://en.wikipedia.org/wiki/Entity_linking) can be very helpful to know. Using a language model and a knowledge base, these tools can find words which describe people, institutions, places, etc., and importantly also obtain their ID in databases such as [Wikidata](https://www.wikidata.org/wiki/Wikidata:Main_Page). This allows to automatically extract an approximate list of e.g. institution who have a Wikidata entry and are mentioned in the text, which is very convenient for obtaining additional information via Wikidata/Wikipedia afterwards.
+
+An open-source option is `OpenTapioca` which you can try in your browser via this [link](https://opentapioca.org/). It is e.g. implemented in Python as a plugin to the library [`spaCy`](https://spacy.io/api). The task of this exercise is to build an own simple function from scratch in R that allows to use OpenTapioca. A good first step is usually to check out the source code of the original (here Python) function which you can find [here](https://github.com/UB-Mannheim/spacyopentapioca/blob/main/spacyopentapioca/entity_linker.py). There is no need to know Python for this exercise, just looking at "url" and the function "make_request" in the code already indicates that it is actually just querying an API. Thus, using `httr` it is possible to build a simple function also in R. I have started this function, your task is to complete it and then demonstrate that it works with the exemplary sentences added below.
+
+The function should return a tibble as output named `top_wikidata_links` with one row being one entity that was found in the input text and four columns being "id" (the Wikidata id), "label" (the name), "description" (a short description returned by the API via "$desc" -- note that for some entities this description can be null, in that case just set the description in the output tibble to NA), and "score" (higher generally indicates a better fit to the text). You can also add further columns to your returned tibble, but the first four need to be these. The tibble should have as many rows as entities that were found in the text and had a score larger than `minimum_score`, which is a cutoff that the user can choose (all other matches returned by the API call with lower scores should not be included in the tibble).
+
+Note that this open-source API does not work perfectly and misses some entities in texts, but can already be very helpful when exploring textual data. With very long input texts, it could also be tried whether breaking them down into smaller parts (e.g. sentences or paragraphs) before inputting them into the API increases accuracy or not.
+
+Hint: Note that in the first test below, the two detected entities will be "Karl Popper" and "LSE". "Karl Popper" only returns a single match, however the "LSE" part of the text will return also matches other than the London School of Economics and Political Science, e.g. the London Stock Exchange. For each entity that the API returns, the tibble returned by the function needs to include a row as long as its associated score is larger than the minimum score.
+
+```{r}
+
+  #
+  # Function which takes a character vector of length 1 as input (i.e. all text
+  # needs to be combined into a single character) as well as a minimum certainty
+  # score, and returns a tibble with key information and links to Wikidata
+  #
+  # Input
+  #  - input_text: Text input (character)
+  #  - minimum_score: Minimum score that every returned entity needs to have
+  #                   (numeric)
+  #
+  # Output
+  #  - top_wikidata_links: Table with the first four columns being 'id', 'label',
+  #               'description', 'score' (tibble)
+  #
+
+get_wikidata_links <- function(input_text, minimum_score) {
+  # Define the base URL for the OpenTapioca API
+  base_url <- "https://opentapioca.org/api/annotate"
+
+  # Get the data
+  r <- GET(base_url, query = list(query = input_text), ssl_verifypeer = 0)
+  
+  # Extract the data as a character string
+  content_str <- rawToChar(r$content)
+  
+  # Parse the character string as JSON and extract the annotations
+  annotations <- content_str %>% 
+    fromJSON() %>% .$annotations
+  
+  # Unnest the data
+  df_unnested <- annotations %>% unnest(tags)
+  
+  # Filter the annotations by score and select the relevant columns
+  top_wikidata_links <- df_unnested %>% 
+    filter(score > minimum_score) %>% 
+    select(id, label, desc, score)
+  
+  # Turn the dataframe into a tibbel
+  top_wikidata_links <- tibble(top_wikidata_links)
+
+  # Return the tibble with the relevant information
+  return(top_wikidata_links)
+}
+
+```
+
+Next demonstrate that your function works by running the following two tests:
+
+```{r}
+# Test 1
+text_example_1 <- "Karl Popper worked at the LSE."
+get_wikidata_links(text_example_1, -0.5)
+
+# 
+# Hint: The output should be a tibble similar to the one outlined below
+#
+# | id | label | description | score |
+# | "Q81244" | "Karl Popper" | "Austrian-British philosopher of science" | 2.4568285 |
+# | "Q174570" | "London School of Economics and Political Science" | "university in Westminster, UK" | "1.4685043" |
+# | "Q171240" | "London Stock Exchange" | "stock exchange in the City of London" | "-0.4124461" |
+
+# Test 2
+text_example_2 <- "Claude Shannon studied at the University of Michigan and at MIT."
+get_wikidata_links(text_example_2, 0)
+```
+
+
+### Exercise 5 (25 points)
+
+The New York Times (NYT) APIs offer a rare free opportunity to analyse news data since 1851 (the year of the first issue of the paper). The "Archive API" allows to download all article headlines and lead paragraphs/snippets for a given month (and through iteration potentially for a range of years). While this does not allow to obtain the full articles, it still allows to download a substantial amount of textual data and thereby do own text analysis.
+
+The task of this exercise is to use the __Archive API__ (not the Article Search API) to develop and present a coherent analysis of a topic of your choice. This could e.g. be the news coverage of a specific historical event somewhere in the last 130 years that you are interested in (in that case the downloaded archive data would be the month(s) of that event) or also a general topic over time. While the NYT Archive API is the primary source of the analysis, in a next step also use either Wikidata (e.g. accessible via these [options](https://www.wikidata.org/wiki/Wikidata:Data_access) such as an API or the Wikidata websites themselves), or alternatively scrape Wikipedia to obtain further information on topics relevant for the selected newspaper texts. You can get links between NYT texts and Wikipedia e.g. via the function developed on Exercise 4 (or some variation of that function) and/or just manually by reading the articles and deciding which information to look up on Wikidata/Wikipedia. Your answer can e.g. contain text analysis with `quanteda`, word clouds, visualisations with `ggplot2` or `plotly `, analysis of tabular data with `dplyr`, or use of further R packages. Also motivate and describe your analysis through markdown texts.
+
+As the downloaded data can again quickly become too large for GitHub, you can store them outside your repository and load them from there.
+
+Hint 1: You might find the code examples from week 5 helpful for this exercise. For the Archive API, the last section in the file `02-nytimes-api.Rmd` illustrates how you can transform its output into a data frame. Usually the main available text is contained in the headline, abstract, lead_paragraph, and/or snippet columns (depending on which month/year you download some of these can be empty or the same). Note that the headline information in the data frame is nested and can be accessed with `df$headline$main`.
+
+Hint 2: Named entity linking with tools such as OpenTapioca gives identifiers for Wikidata such as e.g. "Q7099". Not every Wikidata page also has an associated Wikipedia page, but those that have do contain links to the Wikipedia page. You can e.g. see this on Emmy Noether's Wikidata page https://www.wikidata.org/wiki/Q7099 which contains links to her Wikipedia page in many languages in case you prefer to scrape data from Wikipedia rather than using Wikidata.
+
+
+```{r}
+
+# NYT Archive API Key
+apikey <- "VdKzpe6Gx1rjVKf7xAHAkAfaD6GsIibN"
+
+# URL for March 1993 from the World Trade Center Bombings
+base_url_1993 <- "https://api.nytimes.com/svc/archive/v1/1993/3.json?api-key"
+
+# Collect all the NYT articles during 03/1993
+r_1993 <- GET(base_url_1993, query = list("api-key" = apikey))
+data_1993 <- content(r_1993, "text", encoding = "utf-8")
+data_1993 <- fromJSON(data_1993)
+NYT_articles_1993 <- data_1993$r$docs
+
+# Selected the relevant columns
+NYT_articles_1993 <- NYT_articles_1993 %>% 
+  select(abstract, 
+         snippet, 
+         lead_paragraph, 
+         document_type, 
+         section_name,
+         pub_date) 
+
+# Select articles that contain the word "terror or terrorist"
+NYT_articles_1993 <- NYT_articles_1993[grep("terror|terrorist", NYT_articles_1993$abstract),]
+
+# Split the abstract into single words
+NYT_articles_words_1993 <- unlist(strsplit(NYT_articles_1993$abstract, " "))
+
+# Create a frequency table of the words
+NYT_articles_words_freqs_1993 <- table(NYT_articles_words_1993)
+
+# Sort the frequency table in descending order
+NYT_sorted_word_freqs_1993 <- sort(NYT_articles_words_freqs_1993, decreasing = TRUE)
+
+# Turn the sorted word into a data frame 
+NYT_sorted_word_freqs_1993_df <- data.frame(NYT_sorted_word_freqs_1993)
+
+
+# URL for 09/2001 from 9/11
+base_url_2001 <- "https://api.nytimes.com/svc/archive/v1/2001/9.json?api-key"
+
+# Collect all the NYT articles during 06/2022
+r_2001 <- GET(base_url_2001, query = list("api-key" = apikey))
+data_2001 <- content(r_2001 , "text", encoding = "utf-8")
+data_2001 <- fromJSON(data_2001)
+
+NYT_articles_2001 <- data_2001$r$docs
+
+# Selected columns 
+NYT_articles_2001 <- NYT_articles_2001 %>% 
+  select(abstract, 
+         snippet, 
+         lead_paragraph, 
+         document_type, 
+         section_name,
+         pub_date) %>%
+  filter(pub_date >= as.Date("2001-09-11"))
+
+# Select articles that contain the word "terror|terrorist" in 
+NYT_articles_2001 <- NYT_articles_2001[grep("terror|terrorist", NYT_articles_2001$abstract),]
+
+# Split the abstract into single words
+NYT_words_2001 <- unlist(strsplit(NYT_articles_2001$abstract, " "))
+
+# Create a frequency table of the words
+NYT_word_freqs_2001 <- table(NYT_words_2001)
+
+# Sort the frequency table in descending order
+NYT_sorted_word_freqs_2001 <- sort(NYT_word_freqs_2001, decreasing = TRUE)
+
+#Turn the sorted word into a data frame
+NYT_sorted_word_freqs_2001_df <- data.frame(NYT_sorted_word_freqs_2001)
+
+# Extract the Wikipedia data looking at the 1993 World Trade Center Bombings
+wiki_doc_1993 <- read_html("https://en.wikipedia.org/wiki/1993_World_Trade_Center_bombing")
+content_1993 <- html_nodes(wiki_doc_1993, "p")
+wiki_text_1993 <- html_text(content_1993)
+
+# Turn wiki_text into a data_frame
+wiki_text_df_1993 <- data.frame(wiki_text_1993)
+
+# Slice to get the relevant paragraphs 
+wiki_text_df_1993 <- wiki_text_df_1993 %>%
+  slice(2:4)
+
+# Split the paragraphs into single words
+wiki_words_1993 <- unlist(strsplit(wiki_text_df_1993$wiki_text_1993, " "))
+
+# Create a frequency table of the words
+wiki_word_freqs_1993 <- table(wiki_words_1993)
+
+# Sort the frequency table in descending order
+sorted_wiki_word_freqs_1993 <- sort(wiki_word_freqs_1993, decreasing = TRUE)
+
+# Turn the frequency table into a data frame
+sorted_wiki_word_freqs_1993_df <- data.frame(sorted_wiki_word_freqs_1993)
+
+# Change the column names to "word"
+colnames(sorted_wiki_word_freqs_1993_df)[1] <- "word"
+colnames(NYT_sorted_word_freqs_1993_df)[1] <- "word"
+
+# Tidy the wiki data 
+sorted_wiki_word_freqs_1993_df$word <- tolower(sorted_wiki_word_freqs_1993_df$word)
+sorted_wiki_word_freqs_1993_df$word <- gsub("[[:punct:]]", "", sorted_wiki_word_freqs_1993_df$word)
+sorted_wiki_word_freqs_1993_df$word  <- gsub("[[:digit:]]", "", sorted_wiki_word_freqs_1993_df$word)
+sorted_wiki_word_freqs_1993_df$word <- ifelse(sorted_wiki_word_freqs_1993_df$word == "", "NA", sorted_wiki_word_freqs_1993_df$word)
+
+# Tidy the NYT data
+NYT_sorted_word_freqs_1993_df$word <- tolower(NYT_sorted_word_freqs_1993_df$word)
+NYT_sorted_word_freqs_1993_df$word <- gsub("[[:punct:]]", "", NYT_sorted_word_freqs_1993_df$word )
+NYT_sorted_word_freqs_1993_df$word   <- gsub("[[:digit:]]", "", NYT_sorted_word_freqs_1993_df$word )
+NYT_sorted_word_freqs_1993_df$word  <- ifelse(NYT_sorted_word_freqs_1993_df$word  == "", "NA", NYT_sorted_word_freqs_1993_df$word)
+
+# Merge both 1973 data frames
+merged_df_1993 <- merge(sorted_wiki_word_freqs_1993_df, NYT_sorted_word_freqs_1993_df, by="word", sort = TRUE, decreasing = TRUE) %>%
+  group_by(word) %>%
+  summarize(count = sum(Freq.x, Freq.y)) 
+
+# Filter the dataframe for stopwords and NA
+df_filtered_1993 <- merged_df_1993 %>%
+  filter(!merged_df_1993$word %in% stopwords('english'),
+         merged_df_1993$word != "NA")
+
+# Extract the Wikipedia data looking at the 9/11
+wiki_doc_2001 <- read_html("https://en.wikipedia.org/wiki/September_11_attacks")
+content_2001 <- html_nodes(wiki_doc_2001, "p")
+wiki_text_2001 <- html_text(content_2001)
+
+# Turn wiki_text into a data_frame
+wiki_text_df_2001 <- data.frame(wiki_text_2001)
+
+# Select the paragraphs relating to the original Roe V. Wade
+wiki_text_2001 <- wiki_text_df_2001 %>%
+  slice(21:27)
+
+# Split the paragraphs into single words
+wiki_words_2001 <- unlist(strsplit(wiki_text_2001$wiki_text, " "))
+
+# Create a frequency table of the words
+wiki_word_freqs_2001 <- table(wiki_words_2001)
+
+# Sort the frequency table in descending order
+sorted_wiki_word_freqs_2001 <- sort(wiki_word_freqs_2001, decreasing = TRUE)
+
+# Turn the frequency table into a data frame
+sorted_wiki_word_freqs_2001_df <- data.frame(sorted_wiki_word_freqs_2001)
+
+# Change the column names to "word"
+colnames(sorted_wiki_word_freqs_2001_df)[1] <- "word"
+colnames(NYT_sorted_word_freqs_2001_df)[1] <- "word"
+
+# Tidy the wiki data 
+sorted_wiki_word_freqs_2001_df$word <- tolower(sorted_wiki_word_freqs_2001_df$word)
+sorted_wiki_word_freqs_2001_df$word <- gsub("[[:punct:]]", "", sorted_wiki_word_freqs_2001_df$word)
+sorted_wiki_word_freqs_2001_df$word  <- gsub("[[:digit:]]", "", sorted_wiki_word_freqs_2001_df$word)
+sorted_wiki_word_freqs_2001_df$word <- ifelse(sorted_wiki_word_freqs_2001_df$word == "", "NA", sorted_wiki_word_freqs_2001_df$word)
+
+# Tidy the NYT data
+NYT_sorted_word_freqs_2001_df$word <- tolower(NYT_sorted_word_freqs_2001_df$word)
+NYT_sorted_word_freqs_2001_df$word <- gsub("[[:punct:]]", "", NYT_sorted_word_freqs_2001_df$word )
+NYT_sorted_word_freqs_2001_df$word   <- gsub("[[:digit:]]", "", NYT_sorted_word_freqs_2001_df$word )
+NYT_sorted_word_freqs_2001_df$word  <- ifelse(NYT_sorted_word_freqs_2001_df$word  == "", "NA", NYT_sorted_word_freqs_2001_df$word)
+
+# Merge both 1973 data frames
+merged_df_2001 <- merge(sorted_wiki_word_freqs_2001_df, NYT_sorted_word_freqs_2001_df, by="word") %>%
+  group_by(word) %>%
+  summarize(count = sum(Freq.x, Freq.y))
+
+# Filter our all the stopwords and NA
+df_filtered_2001<- merged_df_2001 %>%
+  filter(!merged_df_2001$word %in% stopwords('english'),
+         merged_df_2001$word != "NA")
+
+set.seed(123)
+
+# Create wordcloud for 9/11
+layout(matrix(c(1, 2), nrow=2), heights=c(1, 4))
+par(mar=rep(0, 4))
+plot.new()
+text(x=0.5, y=0.5, "Wordcloud for 9/11")
+wordcloud(df_filtered_2001$word, df_filtered_2001$count, min.freq =1, scale=c(2, 1), random.order = FALSE, max.words= 70, random.color = FALSE, colors= c("indianred1","indianred2","indianred3","indianred"), main="Title")
+
+
+# Create wordcloud for 1993 World Trade Centre Bombings
+layout(matrix(c(1, 2), nrow=2), heights=c(1, 4))
+par(mar=rep(0, 4))
+plot.new()
+text(x=0.5, y=0.5, "Wordcloud for 1993 World Trade Centre Bombings")
+wordcloud(df_filtered_1993$word, df_filtered_1993$count, min.freq =1, scale=c(2, 1), random.order = FALSE, max.words= 50, random.color = FALSE, colors= c("cadetblue3","cadetblue4","lightsteelblue3","cadetblue"), main="Title")
+
+```
+
+I chose to compare the most frequently used words on the relevant Wikipedia page and in New York Times articles in the days following the 1993 World Trade Center bombings to the most frequently used words on Wikipedia and in the New York Times in the days following 9/11 to see how the language used to compare these events differs. In the analysis of the 9/11 attacks, there is the reccuring theme of religion and nationality being mentioned. This wasn't the case in the analysis of the 1993 attacks. This was a key finding that I did not anticipate. Specifically, despite the fact that both, the 1993 and 2001 assailants were Muslims, religion was not mentioned in the 1993 attacks in the days following. When compared to 9/11, however, Israel, Muslims, Iraq, and Saudi Arabia are mentioned numerous times immenently. This may suggest that, as a result of the media, there is an increase in hostility and generalisations about people of these nationalities and religions, and for newspapers, this increases readership.
+
+
+### Exercise 6 (9 points)
+
+Create an SQLite database called `fb-posts.sqlite` and connect to it with the `DBI` package. Store the file `posts.csv` (without any editing in R) in the database as its only table `posts`. The table may only contain the original information from `posts.csv`, all computations in this exercise have to be done with SQL.
+
+With __only a single__ (which is the main challenge in this exercise) __SQL query__ through `DBI`, replicate the output from Exercise 1 (i.e. also normalise by the max minus min based only on even months etc.). This means that the query should return the same 10 lowest `normalised_clr` column values with the associated screen names as in Exercise 1.
+
+```{r}
+
+fb_posts_df <- read.csv("/Users/amywhiffen/Documents/LSE/MY472 - Data for Data Scientists /Assignments/final-assignment-amywhiffen/data/posts.csv")
+
+# Connect to the SQLite database
+con <- dbConnect(SQLite(), dbname = "fb-posts.sqlite")
+
+dbWriteTable(con, "posts", fb_posts_df, overwrite = TRUE)
+
+
+# Define the SQL query
+dbGetQuery(con, "WITH clr_data AS (
+    SELECT screen_name, CAST(comments_count as FLOAT) / CAST(likes_count as FLOAT) as clr, date
+    FROM posts
+    WHERE likes_count > 0
+), even_months_clr AS (
+    SELECT screen_name, MAX(clr) - MIN(clr) as normaliser_based_on_even_months, strftime('%m', date) as month
+    FROM clr_data
+    WHERE month % 2 = 0
+    GROUP BY screen_name
+    HAVING normaliser_based_on_even_months != 0
+), normalised_clr_data AS (
+    SELECT clr_data.screen_name, clr / even_months_clr.normaliser_based_on_even_months as normalised_clr
+    FROM clr_data
+    JOIN even_months_clr
+    ON clr_data.screen_name = even_months_clr.screen_name
+    WHERE normalised_clr > 0
+)
+SELECT screen_name, normalised_clr
+FROM normalised_clr_data
+ORDER BY normalised_clr ASC
+LIMIT 10
+")
+
+
+dbDisconnect(con)
+
+```
+
+
+### Exercise 7 (25 points)
+
+The goal of this last exercise is to develop an own project, now also based on data of your choice rather than a pre-selected data source. It thereby involves to read into new APIs and to build a relational database on the way before analysing the collected data. To help with the task, the exercise breaks it down into steps. You will first obtain data __through APIs__, organise and store it in a relational database, and then examine and present the topic through computations and visualisations.
+
+1. Read through this [list](https://github.com/public-apis/public-apis) of APIs mentioned in the lecture and choose any of the API(s) in which you are particularly interested. Make sure that the API(s) you choose contain data for a coherent analysis later on. Also read the documentation of the API(s).
+
+2. Obtain the relevant data from your chosen API(s) __through R__ with `httr` (in case you cannot get the code to run for your chosen API with `httr`, you can also use pre-built packages to proceed with the remaining parts). Then process the data in R e.g. with the typical `tidyverse` functionalities.
+
+3. Create a `SQLite` database, and store at least two tables into a well structured and thought-out relational database (no need to store any data in the database that you do not need in your later analysis). Run SQL queries which return the first five rows and all columns of your tables (to give the reader a preview of what you have collected). Also run SQL queries to return the total amount of rows of your tables.
+
+4. Demonstrate which of the tables can be joined. Return __only__ the first five rows of the joined tables, and also return the total number of rows in the joined tables with a query.
+
+5. Now query the database with SQL to obtain data for the main analysis of this exercise. Afterwards you can do all subsequent steps with R. Analyse and illustrate your data e.g. numerically with packages such as `dplyr`, through visualisations based on `ggplot2` or `plotly`, quantitative text analysis with `quanteda`, or any other packages that are helpful. Also motivate and describe your analysis through markdown texts.
+
+1.
+
+```{r}
+
+# Got the below code from: https://github.com/dominicdayta/get-spotify
+
+clientID = 'f81387eff08c468eb1e3e16177ebd031'
+secret = 'b953773ec62443f2b231797f0023e803'
+response = POST(
+  'https://accounts.spotify.com/api/token',
+  accept_json(),
+  authenticate(clientID, secret),
+  body = list(grant_type = 'client_credentials'),
+  encode = 'form'
+)
+
+mytoken = content(response)$access_token
+HeaderValue = paste0('Bearer ', mytoken)
+
+```
+
+2.
+
+```{r}
+
+get_artist_data <- function(artistID = "3WrFJ7ztbogyGnTHbHJFl2") {
+
+  # Get artist data
+  URI <- paste0('https://api.spotify.com/v1/artists/', artistID)
+  response2 <- GET(url = URI, add_headers(Authorization = HeaderValue))
+  artist_data <- content(response2)
+
+  # Get albums
+  album_URI <- paste0('https://api.spotify.com/v1/artists/', artistID,'/albums')
+  album_response <- GET(url = album_URI, add_headers(Authorization = HeaderValue))
+  albums_data <- content(album_response)
+  
+  # Extract album information
+  albums_df <- lapply(albums_data$items, function(x) {
+    data.frame(
+      id = x$id,
+      name = x$name,
+      type = x$type,
+      total_tracks = x$total_tracks,
+      release_date = x$release_date
+    )
+  }) %>% do.call(rbind, .)
+  
+  # Extract track information
+  tracks_df <- lapply(albums_df$id, function(albumID) {
+    track_URI <- paste0('https://api.spotify.com/v1/albums/', albumID,'/tracks')
+    track_response <- GET(url = track_URI, add_headers(Authorization = HeaderValue))
+    tracks_data <- content(track_response)
+    
+    lapply(tracks_data$items, function(x) {
+      data.frame(
+        name = x$name,
+        id = x$id,
+        artist = x$artists[[1]]$name,
+        disc_number = x$disc_number,
+        track_number = x$track_number,
+        duration_ms = x$duration_ms,
+        album = albums_df[albums_df$id == albumID, "name"]
+      )
+    }) %>% do.call(rbind, .)
+  }) %>% do.call(rbind, .)
+  
+  return(list(
+    "artist" = artist_data,
+    "albums" = albums_df,
+    "tracks" = tracks_df
+  ))
+}
+
+
+
+```
+
+3.
+
+```{r}
+
+
+# Connect to database
+spotify_con <- dbConnect(RSQLite::SQLite(), "spotify.db")
+
+# Create albums table
+dbExecute(spotify_con, "CREATE TABLE beetles_albumss_final (id TEXT PRIMARY KEY, name TEXT, 'type' TEXT, total_tracks INTEGER, release_date DATE)", overwrite = TRUE)
+
+# Create tracks table
+dbExecute(spotify_con, "CREATE TABLE beetles_trackss_final (id TEXT PRIMARY KEY, name TEXT, artist TEXT, disc_number INTEGER, track_number INTEGER, duration_ms INTEGER, album TEXT, explicit TEXT, FOREIGN KEY (album) REFERENCES albums(id))", overwrite = TRUE)
+
+# Get artist data
+data <- get_artist_data(artistID = "3WrFJ7ztbogyGnTHbHJFl2")
+
+dbWriteTable(conn = spotify_con, 
+             name = "spotify album", 
+             value = data$albums,
+             overwrite = TRUE)
+
+dbWriteTable(conn = spotify_con, 
+             name = "spotify track", 
+             value = data$tracks,
+              overwrite = TRUE)
+
+# Preview first five rows and all columns of albums table
+albums_preview <- dbGetQuery(spotify_con, "SELECT * FROM 'spotify album' LIMIT 5")
+albums_preview
+
+# Preview first five rows and all columns of tracks table
+tracks_preview <- dbGetQuery(spotify_con, "SELECT * FROM 'spotify track' LIMIT 5")
+tracks_preview
+
+# Get number of rows in albums table
+albums_count <- dbGetQuery(spotify_con, "SELECT COUNT(*) FROM 'spotify album'")$COUNT
+albums_count
+
+# Get number of rows in tracks table
+tracks_count <- dbGetQuery(spotify_con, "SELECT COUNT(*) FROM 'spotify track'")$COUNT
+tracks_count
+
+
+
+
+
+```
+
+4.
+
+```{r}
+
+# Join the two tables on the album name and return the first five rows of the joined table
+joined_tables <- dbGetQuery(spotify_con, "SELECT * 
+           FROM 'spotify album' 
+           JOIN 'spotify track' 
+           ON 'spotify album'.name == 'spotify track'.album
+           LIMIT 5")
+
+joined_tables
+
+# Return the total number of rows in the joined table with a query.
+joined_tables_count <- dbGetQuery(spotify_con, "SELECT COUNT(*) FROM 'spotify album' JOIN 'spotify tracks' ON 'spotify album'.name == 'spotify tracks'.album")$COUNT
+
+joined_tables_count
+
+```
+
+5.
+
+```{r}
+# Create a vector of hexadecimal color codes 
+colors <- c("#e41a1c", "#377eb8", "#4daf4a", "#984ea3", "#ff7f00",
+            "#ffff33", "#a65628", "#f781bf", "#999999", "#66c2a5",
+            "#fc8d62", "#8da0cb", "#e78ac3", "#a6d854", "#ffd92f",
+            "#e5c494", "#b3b3b3", "#8dd3c7", "#ffffb3")
+            
+# Retrieve data for analysis
+albums_df <- dbGetQuery(spotify_con, "SELECT * FROM 'spotify album'")
+tracks_df <- dbGetQuery(spotify_con, "SELECT * FROM 'spotify track'")
+
+tracks_summary_df <- tracks_df %>%
+  group_by(album) %>%
+  summarize(mean_duration = mean(duration_ms),
+            total_tracks = n())
+
+# Create bar chart of number of tracks per album
+ggplot(tracks_summary_df, aes(x = album, y = total_tracks, fill = album)) +
+  geom_bar(stat = "identity") +
+  labs(title = "A graph to show the number of tracks released in each of the\nBeetles albums",x = "Album", y = "Number of Tracks") +
+  theme_minimal() +
+   theme(legend.title = element_blank(),
+        plot.title = element_text(size=8, face = "bold"),
+        axis.text = element_text(size = 6), 
+        axis.title = element_text(size = 8, face = "bold"),
+        axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1),
+        legend.text = element_text(size = 6),
+        legend.key.size = unit(0.3, "cm")) + 
+         scale_fill_manual(values = colors)
+
+```
+
