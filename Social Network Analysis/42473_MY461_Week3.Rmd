@@ -1,0 +1,263 @@
+
+## MY461 Social Network Analysis - Assignment 2
+
+# Load in packages 
+
+```{r}
+library(igraph)
+library(scales)
+```
+
+# Read in the data into R and put into correct formats.
+
+```{r}
+
+# Load all the CSV data files in 
+lawyers <- read.csv("Law_NodeAtt.csv")
+
+advice_edges <- read.csv("Law_Advice.csv")
+
+friendship_edges <- read.csv("Law_Friendship.csv")
+
+cowork_edges <- read.csv("Law_CoWork.csv")
+
+# Create the three networks 
+advice_network <- graph_from_data_frame(advice_edges, directed = TRUE)
+friendship_network <- graph_from_data_frame(friendship_edges, directed = TRUE)
+cowork_network <- graph_from_data_frame(cowork_edges, directed = FALSE)
+
+# Add node attributes to the advice network
+V(advice_network)$ID <- lawyers$ID
+V(advice_network)$Status <- lawyers$Status
+V(advice_network)$Gender <- lawyers$Gender
+V(advice_network)$Office <- lawyers$Office
+V(advice_network)$Seniority <- lawyers$Seniority
+V(advice_network)$Age <- lawyers$Age
+V(advice_network)$Practice <- lawyers$Practice
+V(advice_network)$LawSchool <- lawyers$LawSchool
+
+# Add node attributes to the friendship network
+V(friendship_network)$ID <- lawyers$ID
+V(friendship_network)$Status <- lawyers$Status
+V(friendship_network)$Gender <- lawyers$Gender
+V(friendship_network)$Office <- lawyers$Office
+V(friendship_network)$Seniority <- lawyers$Seniority
+V(friendship_network)$Age <- lawyers$Age
+V(friendship_network)$Practice <- lawyers$Practice
+V(friendship_network)$LawSchool <- lawyers$LawSchool
+
+# Add node attributes to the cowork network
+V(cowork_network)$ID <- lawyers$ID
+V(cowork_network)$Status <- lawyers$Status
+V(cowork_network)$Gender <- lawyers$Gender
+V(cowork_network)$Office <- lawyers$Office
+V(cowork_network)$Seniority <- lawyers$Seniority
+V(cowork_network)$Age <- lawyers$Age
+V(cowork_network)$Practice <- lawyers$Practice
+V(cowork_network)$LawSchool <- lawyers$LawSchool
+
+```
+
+## Question 1: Calculate the density and average degree for each of the three networks. Report these and use them to compare the three networks: what are we learning about the social relationships between coworkers from these network summary statistics? [1.5 points]
+
+```{r}
+# Calculate the density of the advice network
+density_advice <- graph.density(advice_network)
+
+# Calculate the average degree of the advice network
+avg_degree_advice <- mean(degree(advice_network))
+
+# Calculate the density of the friendship network
+density_friendship <- graph.density(friendship_network)
+
+# Calculate the average degree of the friendship network
+avg_degree_friendship <- mean(degree(friendship_network))
+
+# Calculate the density of the cowork network
+density_cowork <- graph.density(cowork_network)
+
+# Calculate the average degree of the cowork network
+avg_degree_cowork <- mean(degree(cowork_network))
+
+
+cat("\nThe average number of connections per node in the advice network: ", avg_degree_advice)
+cat("\nA measure of the proportion of existing edges compared to the total number of possible edges in the advice network: ", density_advice)
+cat("\nThe average number of connections per node in the friendship network: ", avg_degree_friendship)
+cat("\nA measure of the proportion of existing edges compared to the total number of possible edges in the advice network: ", density_friendship)
+cat("\nThe average number of connections per node in the cowork network: ", avg_degree_cowork)
+cat("\nA measure of the proportion of existing edges compared to the total number of possible edges in the cowork network: ", density_cowork)
+
+```
+The advice network has the highest average number of connections per node, at 25.12676. This indicates that the lawyers in this network have a higher number of professional relationships with one another and seek advice from a wide range of colleagues. The proportion of existing edges compared to the total number of possible edges in the advice network is 0.3589537, which is higher compared to the other two networks. This suggests that the lawyers in the advice network have a more tightly connected network than in the other two networks, frequently seek advice from one another and have a strong trust and dependence in each other's professional opinions.
+
+The friendship network has an average number of connections per node of 16.66667, which is lower compared to the advice network but higher compared to the cowork network. This suggests that the lawyers in this network have a smaller number of close personal relationships with one another such as socialising with each others family. The proportion of existing edges compared to the total number of possible edges in the friendship network is 0.245098, which is the lowest of the three networks. This indicates that the lawyers in this network have a more sparse network of personal relationships.
+
+The cowork network has the second-highest average number of connections per node, at 31.09859. This suggests that the lawyers in this network work closely with a wide range of colleagues on professional projects. The proportion of existing edges compared to the total number of possible edges in the cowork network is 0.4442656, which is higher compared to the friendship network but lower compared to the advice network. This indicates that the lawyers in this network have a relatively densely connected network of professional relationships, suggesting a high level of collaboration and interdependence in their professional work, as they frequently work together on cases and rely on each other's work products but less so than the advice network.
+
+In conclusion, the three networks offer insight into the different types of relationships that exist between coworkers in the law firm. The advice network reflects professional relationships, the friendship network reflects personal relationships, and the cowork network reflects professional relationships in a work setting.
+
+
+## Question 2: Calculate in-degree, out-degree, betweenness, closeness, eigenvector, and PageRank centrality for each of the three networks. [1 point]
+
+```{r}
+
+# Calculate the in-degree centrality for each node
+in_degree_advice <- igraph::degree(advice_network, mode = "in")
+in_degree_friendship <- igraph::degree(friendship_network, mode = "in")
+in_degree_cowork <- igraph::degree(cowork_network, mode = "in")
+
+# Calculate the out-degree centrality for each node
+out_degree_advice <- igraph::degree(advice_network, mode = "out")
+out_degree_friendship <- igraph::degree(friendship_network, mode = "out")
+out_degree_cowork <- igraph::degree(cowork_network, mode = "out")
+
+# Calculate the betweenness centrality for each node
+betweenness_advice <- betweenness(advice_network)
+betweenness_friendship <- betweenness(friendship_network)
+betweenness_cowork <- betweenness(cowork_network)
+
+# Calculate the closeness centrality for each node
+closeness_advice <- closeness(advice_network)
+closeness_friendship <- closeness(friendship_network)
+closeness_cowork <- closeness(cowork_network)
+
+# Calculate the eigenvector centrality for each node
+eigenvector_advice <- eigen_centrality(advice_network)$vector
+eigenvector_friendship <- eigen_centrality(friendship_network)$vector
+eigenvector_cowork <- eigen_centrality(cowork_network)$vector
+
+# Calculate the PageRank centrality for each node
+pagerank_advice <- page.rank(advice_network)$vector
+pagerank_friendship <- page.rank(friendship_network)$vector
+pagerank_cowork <- page.rank(cowork_network)$vector
+
+```
+
+## Question 3: Plot each of the three networks once, sizing nodes by one of the centrality measures used above (i.e., in-degree, out-degree, betweenness, closeness, eigenvector, or PageRank centrality). Base your choice on which centrality measure to use for each network on the basis of what you think it reveals about that type of relationship in particular. [2 points]
+
+```{r}
+# Plot advice network with node size based on betweeness centrality
+
+advice_layout <- layout_with_fr(advice_network)
+
+plot(advice_network, 
+     vertex.color = advice_network$ID, 
+     vertex.size = rescale(betweenness_advice) * 10, 
+     edge.width = 0.5, 
+     edge.arrow.size=0.25,
+     vertex.label = NA, 
+     layout = advice_layout, 
+     main = "Advice Network (Node Size = Betweeness Centrality)")
+
+# Plot friendship network with node size based on In-degree centrality
+
+friend_layout <- layout_with_fr(friendship_network)
+
+plot(friendship_network, 
+     vertex.color = friendship_network$ID, 
+     vertex.size = rescale(in_degree_friendship) * 12, 
+     edge.width = 0.5, 
+     vertex.label = NA, 
+     edge.arrow.size=0.25,
+     layout = friend_layout,
+     main = "Friendship Network (Node Size = In-degree Centrality)")
+
+
+# Plot cowork network with node size based on closeness centrality
+
+cowork_layout <- layout_with_fr(cowork_network)
+
+plot(cowork_network, 
+     vertex.color = cowork_network$ID, 
+     vertex.size = rescale(closeness_cowork) * 12, 
+     edge.width = 0.5, 
+     vertex.label = NA, 
+     layout = cowork_layout, 
+     main = "Cowork Network (Node Size = Closeness Centrality)")
+
+```
+
+
+## Question 4: Justify your decision to highlight the particular centrality measure for each particular network. In your justification, present clear interpretations of what each centrality measure is capturing about the position of nodes in that particular network. [3 points]
+
+# Advice network (Betweeness Centrality)
+
+In the advice network, each node represents a lawyer and the size of the node is the betweenness centrality scores which suggest the level of influence and control each lawyer has over the flow of information and advice between other lawyers in the network. A higher betweenness centrality score indicates that a particular lawyer serves as a bridge between other lawyers, and has a significant impact on the flow of information and advice. 
+
+In this network, centered around the middle of the network are a several nodes which are visually bigger than others and have clusters of smaller nodes and numerous of edges surrounding them suggesting that these lawyers play an important role in connecting and influencing the behavior of other lawyers in the network and are often approached for basic professional advice. These lawyers are most likely to be managers or head of teams who are the bridge between the lower level lawyers and partners but are easily accessible and able to offer basic professional advice. However, it is important to note that betweenness centrality only takes into account the shortest paths between pairs of nodes and does not consider other factors such as the strength of ties or the frequency of interactions between lawyers. 
+
+# Friendship network (In degree Centrality)
+
+In the friendship network of lawyers, the in-degree centrality scores indicate the number of people who consider a given colleague to be a close friend in their social network, as defined by the criteria described in the question (knowing each other's families, socialising outside of work).When looking at the in-degree centrality of lawyer friendships, the range from a minimum of 1 to a maximum of 41 suggests a relatively diverse network with individuals having varying levels of close connections within the group. The average score of approximately 19 suggests that the majority of lawyers have a moderate number of close connections, with some having more and others having fewer. 
+
+When looking at the network you can see there is a cluster of larger nodes very close together which would suggest a tightly knit group of lawyers who are closely interconnected with each other and are close friends (as indicated by the high in-degree centrality of each node in the cluster). There are also several larger nodes outside of this cluster which are mostly seen in pairs which suggest the presence of strong dyadic relationships between lawyers who are not closely connected to the main group represented by the cluster. These lawyers may play a role in connecting different parts of the network, but they are not integrated into the core group. 
+
+In addition, there are also many lawyers who choose not to socialise with other colleagues or only socialise with very few. These lawyers can be seen on the outskirts of the network and only have very few edges. The fact that the highest in-degree centrality score is 41 indicates that there is one lawyer who has a large number of incoming connections, meaning that they are likely the most popular or influential person in the network. However, it is important to consider that in-degree centrality only measures the number of incoming connections and does not take into account the strength or quality of these relationships.
+
+# Cowork Network (Closeness Centrality)
+
+The closeness centrality for the cowork network, with each node representing a lawyer, measures the average length of the shortest path between a given node (lawyer) and all other nodes (lawyers) in the network. The higher the closeness centrality score of a node, the closer and more connected it is to all other nodes in the network. In the cowork network, the closeness centrality for the cowork network can help us understand the relationships between the lawyers, and how closely members are connected in their professional network and work together. 
+
+Lawyers with higher closeness centrality scores can be considered more central or influential in the network as they have shorter paths to reach all other lawyers, and therefore have the ability to spread information or ideas more efficiently. When looking at the network there aren't any obvious clusters of nodes but scattered throughout the network are obvious larger nodes. These lawyers might be managers or head of teams who have worked with lots of other members where they have spent time together on at least one case, been assigned to the same case, read or used their work product or read or used their work product. On the other hand, although there are lawyers with lower closeness centrality scores as seen by the smaller nodes around the network, there aren't any nodes that have a single edge/no edge suggesting that overall there is quite an evenly distributed level of centrality.
+
+## Question 5: For each of your chosen centrality measures, identify the lawyer(s) who have the highest value. Discuss why you think that person(s) is the most central in that network (use the attribute information we have about them. [2 points]
+
+```{r}
+
+# Find the the highest value  lawyers in the advice network (Betweeness Centrality)
+sorted_betweenness_advice <- sort(betweenness_advice, decreasing = TRUE)
+top_3_betweenness_indices <- which(betweenness_advice %in% head(sorted_betweenness_advice, 3))
+top_3_lawyers_advice <- V(advice_network)$name[top_3_betweenness_indices]
+top_3_lawyers_advice
+
+# Find the the highest value  lawyers in the friendship network (Degree Centrality)
+sorted_degree_friendship <- sort(in_degree_friendship, decreasing = TRUE)
+top_3_degree_indices <- which(in_degree_friendship %in% head(sorted_degree_friendship, 3))
+top_3_lawyers_friendship <- V(friendship_network)$name[top_3_degree_indices]
+top_3_lawyers_friendship
+
+# Find the highest value lawyers in the cowork network (Closeness Centrality)
+sorted_degree_cowork <- sort(closeness_cowork, decreasing = TRUE)
+top_3_closeness_indices <- which(closeness_cowork %in% head(sorted_degree_cowork, 4))
+top_3_lawyers_cowork <- V(cowork_network)$name[top_3_closeness_indices]
+top_3_lawyers_cowork
+
+# Find the attributes to the highest value lawyers
+advice_subset <- subset(lawyers, ID %in% c(13, 16, 26))
+friendship_subset <- subset(lawyers, ID %in% c(17, 24, 31))
+cowork_subset <- subset(lawyers, ID %in% c(15, 19, 24, 26))
+
+# Print the attributes in data frames
+advice_subset
+friendship_subset
+cowork_subset
+
+```
+
+
+# Advice network (Betweeness Centrality)
+
+In the advice network where we are looking at betweeness centrality, I have decided to look at the three lawyers who have the largest sized node. The three lawyers with the largest nodes in the advice network have high betweenness centrality scores due to a combination of factors that make them valuable intermediaries in the flow of information and advice within the network. 
+
+Firstly, their seniority with the firm is a major factor. All three lawyers have been with the firm for over a decade, which suggests that they have built up a wealth of experience, resources, and connections, and are seen as trusted sources of advice. This would make them highly sought after by other lawyers in the network and increase their centrality score. Secondly, the fact that they all practice litigation is also significant. Litigation is a high demand area of law that requires extensive connections and knowledge, which these lawyers are likely to have acquired over the years. This would make them well-respected by other lawyers and would increase their ability to act as intermediaries between different parts of the network. Thirdly, the fact that all three lawyers are over 40 years of age and have established relationships with a wide range of other lawyers is also a factor that contributes to their high centrality scores. This experience and network of connections make them well-positioned to act as intermediaries between different parts of the network. Lastly, the fact that they all attended prestigious but different law schools means that they have diverse networks of connections with other lawyers from their respective law schools. This would increase their centrality score by providing them with access to a wider range of resources and knowledge and by allowing them to serve as intermediaries between lawyers from different law schools.
+
+It is also important to note that these lawyers' betweenness centrality scores may also be influenced by factors not captured in the data, such as their personal networks, communication skills, or reputation within the firm. These factors could further enhance their centrality scores and increase their value as intermediaries in the network.
+
+# Friendship network (In degree Centrality)
+
+In the friendship network where we are looking at the in-degree centrality scores, I have decided to look at the three lawyers who have the largest sized node. In this network, a higher in-degree centrality score indicate the lawyer has a larger number colleague they would consider to be a close friend (knowing each other's families, socialising outside of work). 
+
+The three lawyers, ID 17, 24, and 31, are at the center of the friendship network due to several key factors. Firstly, their seniority in the firm can play a significant role in their social connections. With ID 17 having 23 years of experience and ID 24 having 15 years of experience at the firm, they have had ample opportunity to build relationships and make friends with their colleagues over the years. On the other hand, ID 31, with 8 years of experience, is a relatively newer addition to the firm, but still has had sufficient time to form close connections with others.
+
+In addition to seniority, their practice of law is also an important consideration. Two of the lawyers, ID 24 and 31, practice litigation law, which may bring them together and create opportunities to build relationships through shared experiences and professional interests. Another factor that could contribute to their centrality is their office location. ID 17 and 24 work at the same office in Boston, which means that they have the opportunity to interact on a daily basis and build stronger connections than if they worked at different offices. Furthermore, it is possible that ID 24 may have introduced ID 31 to ID 17, which has led to the formation of a friendship group. Lastly, the age of the lawyers can also play a role in their social connections. Lawyers who are closer in age may have more in common and may therefore be more likely to become friends. ID 17 and 24 are both around 44-50 years old, which means that they are likely to have similar life experiences and perspectives, making them more likely to form close relationships.
+
+However, it's important to note that there are additional factors not mentioned in the data that could also influence the friendship network. For example, personal interests, shared experiences, and cultural background could also play a role in building close friendships. Furthermore, the size of the network could also impact the centrality score. If the network is large and the lawyer is part of a smaller subset, the in-degree centrality score would be lower compared to the same lawyer in a smaller network where they have a larger number of close friends.
+
+# Cowork Network (Closeness Centrality)
+
+Closeness centrality measures the average distance from a node to all other nodes in the network. In the cowork network, the closeness centrality score of a lawyer represents how close they are to other lawyers in terms of the number of connections required to reach them. The larger the node, the more people who have worked with them in the context of their professional relationships. As there were a few nodes of similar size I decided to look at the top four lawyers instead of three. When I looked at the attributes of the four lawyers with the largest nodes, ID 15, 19, 24, and 26, I noticed several key factors resulting in them having the highest closeness centrality scores.
+
+Firstly, their seniority in the firm can play a significant role in their connections with other colleagues. Lawyers with more experience, such as ID 15 and 19 with 21 and 19 years of experience respectively, have had ample opportunity to build relationships and make connections with their colleagues over the years. ID 24 and 26, with 15 years of experience, also have sufficient time to form close connections with others. The fact all four have been at the firm for over 15 years indicated they have had many years to work with other colleagues and are probably often case leaders of managers meaning they will work with a high number of other lawyers both below and above them. In addition to seniority, the practice of law is also an important factor to consider. ID 24 and 26 both practice litigation law and ID 15 and 19 both practice corporate law. This again could suggest that within each type of law they practice they are the two within their speciality who are normally leading a case or the most qualified to work with other colleagues resulting in the high level of closeness centrality. The age of the lawyers is another consideration. All of the the lawyers are over 40 years of age and so are most like again to be the more senior member of the team or a manger meaning they are most likely to have worked with a lot of other lawyers. 
+
+However, it is important to note that there are additional factors not mentioned in the data that could also influence the cowork network. Personal interests, shared experiences, and cultural background could also play a role in building co working relationships. 
+

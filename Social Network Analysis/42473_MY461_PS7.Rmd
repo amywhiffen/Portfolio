@@ -1,0 +1,189 @@
+
+## MY461 Social Network Analysis - Problem Set 7 
+
+```{r}
+# Load in packages 
+library(igraph)
+
+```
+
+
+**Question 1: Create a network representing the total points awarded between countries from 1975 to 2022. Plot the resulting network. Size edges based on the "sum" variable. Size nodes by in-strength centrality (using strength(), and using the "sum" edge attribute as your edge weight). Colour nodes using the region variable. Position nodes based on the latitude and longitude of their capital cities. Make sure your plots are legible and informative.[1 point]**
+
+```{r}
+
+# Load data for edges
+euro_sum_points <- read.csv("euro_sum_points.csv")
+meta_eurovision <- read.csv("meta_eurovision.csv")
+
+# Convert the columns "from" and "to" into factors
+euro_sum_points$From <- as.factor(euro_sum_points$From)
+euro_sum_points$To <- as.factor(euro_sum_points$To)
+
+# Create the graph object
+euro_graph <- graph_from_data_frame(d = euro_sum_points, directed = TRUE, vertices = meta_eurovision)
+
+# Add edge weights
+E(euro_graph)$Sum <- euro_sum_points$Sum
+
+# Assign geographic coordinates to vertices
+V(euro_graph)$longitude <- meta_eurovision$capital.lon
+V(euro_graph)$latitude <- meta_eurovision$capital.lat
+
+# Calculate in-strength centrality
+in_strength <- strength(euro_graph, mode = "in", weights = E(euro_graph)$Sum)
+
+# Convert region names to integers
+region_int <- match(meta_eurovision$Region, unique(meta_eurovision$Region))
+
+# Add Region_int attribute to nodes
+V(euro_graph)$Region_int <- region_int
+
+# Plot the network
+set.seed(345)
+plot(euro_graph, 
+     vertex.label = meta_eurovision$ISO.alpha3.code,
+     vertex.color = region_int, 
+     vertex.size = in_strength / 170, 
+     edge.width = E(euro_graph)$Sum / 250, 
+     layout = as.matrix(cbind(meta_eurovision$capital.lon, meta_eurovision$capital.lat)),
+     edge.arrow.size = 0.1,
+     main = "Eurovision Song Contest: Total Points Awarded 1975-2022",
+     vertex.label.cex = 0.5)
+
+legend("topright",
+       legend = c("Southern Europe" ,"Western Asia" ,"Western Europe" ,"Eastern Europe", "Northern Europe"),
+       pch = 19,
+       col = categorical_pal(5)[c(1:5)],
+       cex = 0.7)  
+
+```
+
+
+**Question 2: Calculate the reciprocity, (global) transitivity, and assortativity by region for the network. How do these values compare to what we saw with the Eurovision network from the last problem set? Why do they differ? Are these values informative and meaningful for this network? Justify your answer. [2 points]**
+
+```{r}
+
+# Reciprocity
+reciprocity <- reciprocity(euro_graph)
+cat("Reciprocity:", reciprocity, "\n")
+
+# Global transitivity
+transitivity <- transitivity(euro_graph, type = "global")
+cat("Global Transitivity:", transitivity, "\n")
+
+# Calculate assortativity by region
+region_assortativity <- assortativity.nominal(euro_graph, V(euro_graph)$Region_int, directed = TRUE)
+cat("Assortativity by Region:", region_assortativity, "\n")
+
+
+```
+
+Comparing the values obtained for the Eurovision network from the last problem set (2016-2022) to the new dataset (1975-2022), we see significant differences in reciprocity, global transitivity, and assortativity by region. Reciprocity measures the extent to which pairs of nodes in a directed network are mutually connected. The reciprocity value for the jury network in the 2016-2022 dataset is 0.1928934, indicating that less than 20% of the pairs of countries reciprocally award points to each other. In contrast, the reciprocity value for the 1975-2022 dataset is 0.8927856, indicating that over 89% of the pairs of countries reciprocally award points to each other. 
+
+Global transitivity measures the extent to which triads of nodes in a network are connected. The global transitivity value for the jury network in the 2016-2022 dataset is 0.244186, indicating that less than 25% of the possible triads of countries are connected. In contrast, the global transitivity value for the 1975-2022 dataset is 0.9344615, indicating that over 93% of the possible triads of countries are connected. This suggests that global transitivity in Eurovision has also increased over time, potentially due to increased cultural exchange or globalisation.
+
+Assortativity by region measures the extent to which nodes of similar attributes (e.g., regions) tend to be connected. The assortativity by region value for the jury network in the 2016-2022 dataset is 0.05284713, indicating a weak tendency for nodes from the same region to be connected. In contrast, the assortativity by region value for the 1975-2022 dataset is -0.01185824, indicating a weak tendency for nodes from different regions to be connected. This suggests that the role of regional bloc voting in Eurovision has decreased over time, potentially due to changes in voting rules or shifts in cultural alliances.
+
+When comparing the values obtained for the Eurovision network from the last problem set to the new dataset, we see that the reciprocity and global transitivity values for the 1975-2022 dataset are higher than those for the 2016-2022 dataset, while the assortativity by region values are lower. This difference may be due to the fact that the 1975-2022 dataset includes a larger number of countries and a longer time period, which allows for more opportunities for mutual exchange and cross-cultural interaction between countries.
+
+
+**Question 3: Plot the 𝑘-core membership of the network using coreness(net, mode = "in") (i.e., considering incoming edges). What does this reveal about Eurovision participation? What seems to determine which countries are peripheral? [2 points]**
+
+```{r}
+
+core_membership <- coreness(euro_graph, mode = "in")
+
+plot(euro_graph, 
+     vertex.color = core_membership, 
+     vertex.label = core_membership,
+     edge.width = E(euro_graph)$Sum / 250,
+     edge.arrow.size = 0.1,
+     vertex.label.cex = 0.7)
+
+# Define the colors and labels for the legend
+legend_colors <- c("#56b4e9", "#007554", "#d55f00", "#0073b2", "#f1e542", "#cd78a7", "#011a8d", "#ffffff")
+legend_labels <- rev(levels(factor(core_membership)))
+
+# Add the legend to the plot
+legend("topright", 
+       legend = legend_labels, 
+       fill = legend_colors,
+       title = "Coreness")
+
+
+```
+The 𝑘-core membership of the network reveals the level of connectivity of each country in the Eurovision network. The higher the 𝑘-core membership value, the more central a country is in the network. The results show that most countries have a high 𝑘-core membership value of 34, indicating that they are well connected in the network. However, there are some countries with lower 𝑘-core membership values, such as Andorra, Montenegro, San Marino, and Slovakia, which are more peripheral in the network.
+
+The peripheral status of a country may be influenced by various factors, such as its geographic location, the size of its population, its cultural and linguistic differences with other countries in the network, or its level of economic development. Countries that are more peripheral may have fewer resources and opportunities to participate actively in the Eurovision network, such as hosting the event or forming alliances with other countries to exchange votes. Additionally, they may face greater challenges in promoting their culture and music on an international stage.
+
+**Question 4: Determine community membership in the network using the spinglass community detection algorithm, making sure to use edge weights. (To ensure that we all can get equivalent results, we need to effectively align our randomness. So, please include (and run) the line set.seed(654321) either at the start of your submission or just before you use the cluster_spinglass() function). Plot the network as done for Question 1 with nodes positioned by latitude and longitude of their capital city,  but now with nodes coloured by their community membership. [1 point] **
+
+```{r}
+# Set seed for reproducibility
+set.seed(654321)
+
+# Perform community detection using spinglass algorithm
+euro_communities <- cluster_spinglass(euro_graph, weight = E(euro_graph)$Sum)
+
+# Plot the network with nodes coloured by their community membership
+plot(euro_communities,
+     euro_graph, 
+     vertex.label = meta_eurovision$ISO.alpha3.code,
+     vertex.color = factor(euro_communities$membership),
+     vertex.size = in_strength / 170, 
+     edge.width = E(euro_graph)$Sum / 250, 
+     layout = as.matrix(cbind(meta_eurovision$capital.lon, meta_eurovision$capital.lat)),
+     edge.arrow.size = 0.1,
+     main = "Eurovision Song Contest: Total Points Awarded 1975-2022",
+     vertex.label.cex = 0.5)
+
+# Add legend for community membership
+legend("topright",
+       legend = as.character(unique(euro_communities$membership)),
+       pch = 19,
+       col = categorical_pal(length(unique(euro_communities$membership)))[c(1:length(unique(euro_communities$membership)))],
+       cex = 0.7)
+
+```
+
+
+**Question 5: Discuss the results of your analyses, with particular attention to the spinglass community memberships. Make sure to compare the spinglass community memberships with the regional groups. Do they seem to align? To help in your response, create a statnet version of the network and use the blockmodel function to report two block matrices, one showing the probability of ties within and between different regions, and one showing the probability of ties within and between the spinglass communities. Overall, how do you make sense of the communities we find? What might explain the groupings? What does this suggest about Eurovision and Europe over this period? [4 points]**
+
+
+```{r}
+require(intergraph)
+detach(package:igraph)
+require(sna)
+
+# Convert the graph to a statnet network object
+euro_network <- asNetwork(euro_graph)
+
+# Create a blockmodels
+blockmodel_region <- blockmodel(euro_network, ec = as.numeric(factor(euro_network %v% "Region")))$block.model 
+blockmodel_communities <- blockmodel(euro_network, ec = euro_communities$membership)$block.model
+
+blockmodel_region
+blockmodel_communities
+
+```
+
+The community structure identified by the spinglass algorithm suggests that the Eurovision network is not a completely random collection of connections. Instead, there are patterns of connections that group certain countries together. The fact that the modularity of the network is nonzero (0.0046) indicates that there are more edges between nodes within the communities than would be expected if the connections were purely random.
+
+The first community (group 1) includes mainly Eastern European countries, as well as Southern European countries like Greece and Malta. This is not surprising given the geographic and cultural proximity of these countries. Additionally, many of the countries in this group have been under Soviet influence in the past, which may have led to cultural and linguistic similarities.
+
+The second community (group 2) includes predominantly Balkan countries. Again, this is not surprising given the shared history and culture of these countries. The fact that this group is separate from the first group suggests that there are differences between the Balkan and Eastern European countries that are significant enough to form distinct communities within the Eurovision network.
+
+The third community (group 3) includes Western European countries, as well as Israel. This group is also not surprising given the shared cultural and economic ties between these countries. These countries have a long history of cultural exchange, and many of them are members of the European Union.
+
+The fourth community (group 4) includes the Baltic states and Poland. These countries are grouped together due to their shared geography and history. They are all located in the northeastern part of Europe, and they have all experienced significant political and cultural changes in recent history.
+
+The communities identified by the spinglass algorithm suggest that the Eurovision network is not simply a random collection of connections. Instead, there are meaningful patterns of connections that group certain countries together. These patterns likely reflect a combination of geographic, cultural, and historical factors that have shaped the relationships between countries in Europe over the past several decades.
+
+The blockmodels help to illustrate the degree of connectivity between different regions or communities within the Eurovision network. The first blockmodel shows that there is a relatively high degree of connectivity within each geographic region, but there are also significant connections between different regions. For example, Western and Northern European countries are closely connected, while Eastern European countries have strong ties with Southern European countries.
+
+The second blockmodel provides a more detailed picture of the connections between the four communities identified by the spinglass algorithm. It shows that there are stronger connections between countries within the same community than between countries in different communities. This suggests that there are underlying factors that have led to the formation of these communities, such as shared cultural and historical ties, language, and political alliances.
+
+The within-group probabilities being generally higher than the between-group probabilities suggest that countries within the same region or spinglass community tend to vote for each other more often than for countries outside of their group. This is an example of homophily, or the tendency for individuals to associate with others who are similar to them in some way. However, the fact that the between-group probabilities are not zero indicates that there is also some degree of heterophily. This means that countries outside of a given region or spinglass community can still receive points from countries within that group, although the likelihood of this happening is lower than for countries within the same group.
+
+Overall, the community structure identified by the spinglass algorithm reflect a combination of cultural, political, and linguistic similarities between countries, as well as strategic voting patterns that have been observed in Eurovision over the years. For example, countries may vote for their neighbors or allies, or they may be influenced by historical or cultural ties. The fact that the spinglass algorithm identified communities that cut across regional boundaries suggests that there may be some underlying patterns that transcend geographic proximity. In terms of what this suggests about Eurovision and Europe over this period, the community structure may reflect the changing geopolitical landscape and cultural dynamics of the region. The fact that the spinglass algorithm identified different communities over time suggests that there may be some temporal variation in the patterns of voting and cultural affinity within the Eurovision network. 

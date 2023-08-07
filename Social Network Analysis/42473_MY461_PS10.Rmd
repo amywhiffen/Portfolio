@@ -1,0 +1,292 @@
+---
+output:
+  html_document: default
+---
+
+# MY461 Social Network Analysis - Problem Set 10
+
+```{r}
+
+require(igraph)
+require(intergraph)
+
+el_ad <- read.csv("Law_Advice.csv", header = TRUE, as.is = TRUE)
+el_fr <- read.csv("Law_Friendship.csv", header = TRUE, as.is = TRUE)
+law_att <- read.csv("Law_NodeAtt.csv", header = TRUE, as.is = TRUE)
+
+net_ad <- graph_from_edgelist(as.matrix(el_ad), directed = TRUE)
+net_fr <- graph_from_edgelist(as.matrix(el_fr), directed = TRUE)
+
+attify <- function(n_net){
+  V(n_net)$names <- V(n_net)
+  V(n_net)$Status <- law_att$Status
+  V(n_net)$Gender <- law_att$Gender
+  V(n_net)$Office <- law_att$Office
+  V(n_net)$Seniority <- law_att$Seniority
+  V(n_net)$Age <- law_att$Age
+  V(n_net)$Practice <- law_att$Practice
+  V(n_net)$LawSchool <- law_att$LawSchool
+  return(n_net)
+}
+
+net_ad <- attify(net_ad)
+net_fr <- attify(net_fr)
+
+snet_ad <- intergraph::asNetwork(net_ad)
+snet_fr <- intergraph::asNetwork(net_fr)
+
+detach(package:igraph)
+require(ergm)
+require(sna)
+
+
+```
+
+**1. Fit an ERG model including terms for: the effect of age (overall activity, i.e., ignoring tie directionality), status on incoming ties, status on outgoing ties, gender homophily, office homophily, and practice homophily. Print the model results with summary(). [1 point]**
+
+```{r}
+
+m <- ergm(snet_ad ~ edges + 
+           nodeifactor("Status") +
+           nodeofactor("Status") + 
+           nodematch("Gender") + 
+           nodematch("Office") +
+           nodematch("Practice") + 
+           nodecov("Age"))
+
+summary(m)
+
+```
+
+**2. Interpret each of the terms (except the first “edges” term) of the ERGM. Report the odds ratio associated with each. Do so in prose, so that we can check your comprehension. [2 points]**
+
+The terms in the ERGM can be interpreted as follows:
+
+nodeifactor.Status.2: This term represents the effect of having Status 2 as an advice seeker (i.e., the lawyer sending the advice tie). The estimate is -1.531176, which corresponds to an odds ratio of exp(-1.531176) ≈ 0.216. This means that actors with Status 2 are about 0.216 times as likely to seek advice compared to those with Status 1, holding all other variables constant.
+
+nodeofactor.Status.2: This term represents the effect of having Status 2 as an advice provider (i.e., the lawyer receiving the advice tie). The estimate is -0.301026, which corresponds to an odds ratio of exp(-0.301026) ≈ 0.740. This means that lawyers with Status 2 are about 0.740 times as likely to be sought for advice compared to those with Status 1, holding all other variables constant.
+
+nodematch.Gender: This term represents the effect of gender homophily, which means that lawyers are more likely to form ties with others of the same gender. The estimate is 0.415596, which corresponds to an odds ratio of exp(0.415596) ≈ 1.515. This means that the odds of forming an advice tie between lawyers of the same gender are about 1.515 times higher than between lawyers of different genders, holding all other variables constant.
+
+nodematch.Office: This term represents the effect of office homophily, which means that lawyers are more likely to form ties with others from the same office. The estimate is 1.689890, which corresponds to an odds ratio of exp(1.689890) ≈ 5.418. This means that the odds of forming an advice tie between lawyers from the same office are about 5.418 times higher than between lawyers from different offices, holding all other variables constant.
+
+nodematch.Practice: This term represents the effect of practice homophily, which means that lawyers are more likely to form ties with others from the same practice area. The estimate is 1.425616, which corresponds to an odds ratio of exp(1.425616) ≈ 4.161. This means that the odds of forming an advice tie between lawyers from the same practice are about 4.161 times higher than between lawyers from different practices, holding all other variables constant.
+
+nodecov.Age: This term represents the effect of age differences between lawyers on the likelihood of forming an advice tie. The estimate is -0.020815, which corresponds to an odds ratio of exp(-0.020815) ≈ 0.979. This means that for each additional year of age difference between two lawyers, the odds of forming an advice tie are about 0.979 times lower, holding all other variables constant.
+
+**3. Report the expected probability of a tie between two lawyers with the following characteristics [1 point]:**
+
+**a) both with the median age of 39, both associates (i.e., both with a coding of 2), both of the same gender, working in the same office, and both practicing the same type of law;**
+
+
+```{r}
+library(sna)
+library(intergraph)
+
+estoprob <- function(logit) {
+  exp(logit)/(1+exp(logit))
+}
+
+cbind(c(1, 2, 2, 0, 0, 0, 78), (coef(m)))
+
+# Calculate the expected probability of a tie
+logit_a <- sum(c(1, 2, 2, 0, 0, 0, 78)*(coef(m)))
+estoprob(logit_a)
+
+
+```
+
+**b) both with the median age of 39, both associates (i.e., both with a coding of 2), both of the same gender, working in different offices, and both practicing the same type of law;**
+
+```{r}
+
+cbind(c(1, 2, 2, 1, 0, 0, 78), (coef(m)))
+
+# Calculate the expected probability of a tie
+logit_b <- sum(c(1, 2, 2, 1, 0, 0, 78)*(coef(m)))
+estoprob(logit_b)
+
+```
+
+**c) both with the median age of 39, one being an associate (i.e., one with a coding of 2) and one a partner (i.e., with a coding of 1), both of the same gender, working in the same office, and both practicing the same type of law**
+
+```{r}
+
+cbind(c(1, 1, 1, 0, 0, 0, 78), (coef(m)))
+
+# Calculate the expected probability of a tie
+logit_c <- sum(c(1, 1, 1, 0, 0, 0, 78)*(coef(m)))
+estoprob(logit_c)
+
+
+```
+
+**4. Fit a new ERGM with all of the same terms as above, but additionally with a reciprocity term (include mutual), a shared partners term (include gwesp(0.8, fixed = TRUE)), and a term for the friendship network (include edgecov(snet_fr)). Give explicit interpretations of the new terms. Compare the results of this new ERGM to the one previously run – how have things changed? [3 points]**
+
+**--> Because it can take a few moments for this to run, please (1) include but comment out the lines of code that would run and summarize the model, (2) include the summary output for the model as a commented out chunk of text in your R file (to do this easily, you should just copy the summary output, paste it into your R file, highlight those lines and then select “Comment/Uncomment Lines” from the Code dropdown menu in RStudio – this should put a # in front of each of the lines). (If you are using RMarkdown and want to in some other way include this code without evaluating it and include the output of the results, you are free to do so).**
+
+```{r}
+
+# # # Fit the new ERGM with additional terms
+ m2 <- ergm(snet_ad ~ edges +
+              nodeifactor("Status") +
+              nodeofactor("Status") +
+              nodematch("Gender") +
+              nodematch("Office") +
+              nodematch("Practice") +
+              nodecov("Age") +
+              mutual() +
+              gwesp(0.8, fixed = TRUE) +
+              edgecov(snet_fr))
+  
+# # # Print the model summary
+# summary(m2)
+ 
+ 
+# Call:
+# ergm(formula = snet_ad ~ edges + nodeifactor("Status") + nodeofactor("Status") + 
+#     nodematch("Gender") + nodematch("Office") + nodematch("Practice") + 
+#     nodecov("Age") + mutual() + gwesp(0.8, fixed = TRUE) + edgecov(snet_fr))
+# 
+# Monte Carlo Maximum Likelihood Results:
+# 
+#                       Estimate Std. Error MCMC % z value Pr(>|z|)    
+# edges                -4.868447   0.371880      0 -13.091  < 1e-04 ***
+# nodeifactor.Status.2 -1.082490   0.097774      0 -11.071  < 1e-04 ***
+# nodeofactor.Status.2  0.426896   0.099420      0   4.294  < 1e-04 ***
+# nodematch.Gender      0.226656   0.083781      0   2.705  0.00682 ** 
+# nodematch.Office      0.735324   0.087608      0   8.393  < 1e-04 ***
+# nodematch.Practice    1.025764   0.081945      0  12.518  < 1e-04 ***
+# nodecov.Age          -0.004960   0.003079      0  -1.611  0.10716    
+# mutual                0.243477   0.147291      0   1.653  0.09832 .  
+# gwesp.fixed.0.8       0.934682   0.073968      0  12.636  < 1e-04 ***
+# edgecov.snet_fr       1.948603   0.106961      0  18.218  < 1e-04 ***
+# ---
+# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+# 
+#      Null Deviance: 6890  on 4970  degrees of freedom
+#  Residual Deviance: 3198  on 4960  degrees of freedom
+#  
+# AIC: 3218  BIC: 3283  (Smaller is better. MC Std. Err. = 1.228)
+```
+
+
+The new ERGM includes three additional terms: reciprocity (mutual), shared partners (gwesp(0.8, fixed = TRUE)), and a term for the friendship network (edgecov(snet_fr)). The interpretations of these terms are as follows:
+
+Reciprocity (mutual): This term accounts for the tendency of lawyers to reciprocate ties. A positive coefficient indicates that there is a higher likelihood of reciprocated ties in the network, while a negative coefficient indicates a lower likelihood of reciprocated ties.
+
+Shared partners (gwesp(0.8, fixed = TRUE)): This term accounts for the propensity of lawyers to form ties with others who have shared partners, which can be seen as a measure of transitivity or triadic closure in the network. A positive coefficient suggests that lawyers with shared partners are more likely to form ties, while a negative coefficient suggests the opposite.
+
+Friendship network (edgecov(snet_fr)): This term accounts for the influence of the friendship network on the formation of ties in the advice network. A positive coefficient suggests that ties in the friendship network positively influence the formation of ties in the advice network, while a negative coefficient suggests the opposite.
+
+Comparing the results of the new ERGM to the previous one, we observe several changes:
+
+The edges term has become more negative (-4.868447), indicating a stronger negative effect of the overall density of the network and a stronger baseline effect against tie formation in the new model.
+
+The coefficients for nodematch.Gender and nodecov.Age have decreased, and the nodecov.Age term is no longer statistically significant (p =0.10716). This suggests that, after accounting for the additional terms, the effect of gender homophily is weaker and the effect of age differences on tie formation becomes statistically insignificant.
+
+The coefficients for nodeifactor.Status.2 and nodeofactor.Status.2 have changed. The nodeifactor.Status.2 term has become less negative (-1.082490), indicating a weaker negative effect of actors with Status 2 on tie formation. The nodeofactor.Status.2 term has become positive (0.426896), indicating that actors are now more likely to seek advice from individuals with Status 2.
+
+The new terms have the following effects:
+
+Reciprocity (mutual) has a positive, but not statistically significant, effect (0.243477, p = 0.09832) on tie formation, suggesting a weak tendency for lawyers to reciprocate ties.
+Shared partners (gwesp.fixed.0.8) has a strong positive effect (0.934682, p < 1e-04) on tie formation, indicating that lawyers with shared partners are more likely to form ties.
+
+Friendship network (edgecov.snet_fr) has a strong positive effect (1.948603, p < 1e-04) on tie formation, suggesting that ties in the friendship network positively influence the formation of ties in the advice network.
+
+The model fit has improved with the inclusion of the new terms, as indicated by the ower values of AIC (3218) and BIC (3283) compared to the previous model (AIC: 3814, BIC: 3859). Lower AIC and BIC values indicate a better model fit, suggesting that the new ERGM with additional terms better explains the structure of the network. 
+
+The residual deviance of the new model (3198) is lower than that of the original model (3800), suggesting that the new model (m2) provides a better fit to the data.
+
+In summary, the new ERGM with the additional terms of reciprocity, shared partners, and friendship network provides a better fit to the data and offers more insights into the factors influencing tie formation in the advice network. The changes in the coefficients of the existing terms and the addition of the new terms have highlighted the role of reciprocity, transitivity, and the influence of the friendship network on the advice network.
+
+**5. Now consider how well we are matching the structure of the network with our two ERG models. Look at the goodness of fit plots, including these as part of your submission. How are we doing in modelling the observed network? Are you satisfied with this? What are we not getting well? Consider how you might change the model. This could be by including other terms involving the attributes we are already including, or could involve attributes that we haven’t included yet (look back to the metadata file to see what other covariates exist). Give a rationale for an alternative term that you propose for inclusion in the ERGM. Run this new third ERGM that includes your proposed reformulation. How do the model results change (comparing to the ERGM from question #4)? Does your term have a strong effect on the likelihood of a tie? How does it affect the other terms in the model? [3 points]**
+
+**--> Include the GOF plots either as stand-alone PDF files or as part of a knitted PDF resulting from your RMarkdown file. Again, comment out the line that would define this new ERGM, and include the summary output of the model (or otherwise ensure that we do not need to run the ERGM to see the results), as done for question 4.**
+
+
+```{r}
+
+# Load the necessary libraries
+library(ergm)
+
+# Compute the goodness of fit for both models
+gof_m1 <- gof(m)
+gof_m2 <- gof(m2)
+
+# # Plot the goodness of fit for both models
+par(mfrow = c(2, 1))
+plot(gof_m1)
+plot(gof_m2)
+
+```
+
+Based on the goodness of fit (GOF) statistics for both models (gof_m1 and gof_m2), we can see that neither model fits the data perfectly, as indicated by the MC p-values. However, some aspects of the data are better explained by the models than others.
+
+In Model 1 (gof_m1), the model has a good fit for node-level attributes like 'nodeifactor.Status.2', 'nodeofactor.Status.2', 'nodematch.Gender', 'nodematch.Office', 'nodematch.Practice', and 'nodecov.Age'. These are indicated by MC p-values close to or greater than 0.05. However, the model performs poorly on other aspects like the minimum geodesic distance and edgewise shared partner distribution, which have MC p-values of 0.00.
+
+In Model 2 (gof_m2), the model performs better in capturing the in-degree and out-degree distribution. The majority of the in-degree and out-degree categories have MC p-values close to or greater than 0.05, indicating a better fit. However, it performs poorly on the edgewise shared partner distribution and the minimum geodesic distance, with many MC p-values being 0.00 or much lower than 0.05.
+
+In summary, neither Model 1 nor Model 2 provides a perfect fit for the data. Model 1 is better at capturing node-level attributes, while Model 2 is better at capturing the in-degree and out-degree distribution. Both models perform poorly on the edgewise shared partner distribution and minimum geodesic distance. To improve the models, I propose adding the 'Law School' attribute to the ERGM as a nodematch. The rationale for including for including the 'Law School' attribute as a nodematch term is that individuals who attended the same law school may have formed connections during their education, and these connections might persist or influence their professional relationships. By including this term, we aim to account for the potential effect of shared educational background on the formation of ties within the network.
+ 
+  
+```{r}
+
+# # # Fit the new ERGM with the additional term law school
+ m3 <- ergm(snet_ad ~ edges +
+            nodeifactor("Status") +
+            nodeofactor("Status") +
+            nodematch("Gender") +
+            nodematch("Office") +
+            nodematch("Practice") +
+            nodecov("Age") + 
+            nodematch("LawSchool") +
+            mutual() +
+            gwesp(0.8, fixed = TRUE) +
+            edgecov(snet_fr))# 
+ 
+# # Display the model results
+# summary(m3)
+# 
+# Call:
+# ergm(formula = snet_ad ~ edges + nodeifactor("Status") + nodeofactor("Status") + 
+#     nodematch("Gender") + nodematch("Office") + nodematch("Practice") + 
+#     nodecov("Age") + nodematch("LawSchool") + mutual() + gwesp(0.8, 
+#     fixed = TRUE) + edgecov(snet_fr))
+# 
+# Monte Carlo Maximum Likelihood Results:
+# 
+#                       Estimate Std. Error MCMC % z value Pr(>|z|)    
+# edges                -4.961535   0.363649      0 -13.644   <1e-04 ***
+# nodeifactor.Status.2 -1.084336   0.094429      0 -11.483   <1e-04 ***
+# nodeofactor.Status.2  0.429671   0.097056      0   4.427   <1e-04 ***
+# nodematch.Gender      0.230850   0.081268      0   2.841   0.0045 ** 
+# nodematch.Office      0.740581   0.085416      0   8.670   <1e-04 ***
+# nodematch.Practice    1.028756   0.083188      0  12.367   <1e-04 ***
+# nodecov.Age          -0.004350   0.002966      0  -1.466   0.1426    
+# nodematch.LawSchool   0.086044   0.088326      0   0.974   0.3300    
+# mutual                0.236997   0.148101      0   1.600   0.1095    
+# gwesp.fixed.0.8       0.936068   0.074461      0  12.571   <1e-04 ***
+# edgecov.snet_fr       1.939904   0.107893      0  17.980   <1e-04 ***
+# ---
+# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+# 
+#      Null Deviance: 6890  on 4970  degrees of freedom
+#  Residual Deviance: 3196  on 4959  degrees of freedom
+#  
+# AIC: 3218  BIC: 3289  (Smaller is better. MC Std. Err. = 0.7089)
+# 
+# 
+
+```
+
+Comparing the model results from the previous ERGM in question 4 to the new one with the nodematch("LawSchool") term, there are some changes in the model:
+
+The AIC and BIC values remain almost the same, indicating that the model fit is not significantly different by including the nodematch("LawSchool") term.
+
+The nodematch("LawSchool") term itself has a positive estimate of 0.086044, but its p-value is 0.3300, which is not statistically significant at the 0.05 level. This indicates that having a tie between lawyers who attended the same law school does not have a strong effect on the likelihood of forming a tie in the network.
+
+The estimates and significance levels of the other terms in the model are not substantially affected by the inclusion of the nodematch("LawSchool") term. For example, the nodematch("Gender"), nodematch("Office"), and nodematch("Practice") terms still have statistically significant positive effects on tie formation, and the nodecov("Age") term still has a negative effect, albeit not statistically significant in the new model.
+
+In summary, including the nodematch("LawSchool") term in the ERGM does not lead to a substantial improvement in the model fit or result in a strong effect on the likelihood of a tie. The term's inclusion also has minimal impact on the other terms in the model. 
+

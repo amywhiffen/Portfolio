@@ -1,0 +1,194 @@
+## MY461 Social Network Analysis - Assignment 3
+
+```{r}
+# Load necessary libraries
+library(tidyverse)
+library(igraph)
+library(statnet)
+library(sna)
+```
+
+# Question 1: Evaluate either the structural or regular equivalency of the lawyers using the advice network (your choice -- either is justifiable). Plot the resulting dendrogram and decide how many equivalency classes to define (i.e., how many groups $k$), providing a brief discussion of your decision process for selecting that number of classes. [2 points]
+```{r}
+
+lawyers_advice_data <- read.csv("Law_Advice.csv")
+
+# Create the adjacency matrix from the input data
+lawyers_advice_matrix <- as.matrix(table(lawyers_advice_data))
+
+# Create the clustering plot
+cluster_plot <- equiv.clust(lawyers_advice_matrix, mode="degree")
+
+par(cex=0.6)
+plot(cluster_plot)
+
+rect.hclust(cluster_plot$cluster, k = 4)
+
+```
+
+I have chosen to use regular equivalence to analyse the connections between lawyers in the firm when it comes to seeking advice. This decision is based on the nature of the data collected, which was through a nomination process where lawyers nominated colleagues from a full list to whom they turn to for professional advice. The nomination data reflects the specific relationships between lawyers and the people they seek advice from, making regular equivalence a more appropriate method for analysis.
+
+Regular equivalence considers the connections between individual lawyers, unlike structural equivalence that only focuses on the overall structure of the network. This distinction is crucial in analysing the advice-seeking behaviour of lawyers, as it captures the specific relationships between lawyers that are relevant to the study.
+
+Through the use of regular equivalence, I can identify sources of advice and expertise among the lawyers, as well as the relationships between them. Additionally, I can identify clusters or groups of lawyers who frequently seek advice from each other, which could indicate strong professional relationships or a shared approach to their work. In contrast, structural equivalence would provide a general picture of the network but would not capture the nuances of the specific relationships between lawyers. Thus, regular equivalence offers a more nuanced and meaningful understanding of the relationships between lawyers and their approach to seeking advice.
+
+I chose to define 4 equivalency classes. I came to this decision as when I used rect.hclust to visualize the dendrogram, I tried setting K below and above 4 but the height of the branches in the dendrogram showed that 4 groups of lawyers could be clearly identified. The branches in the dendrogram above this threshold height appeared to have merged together, and it was not clear where to draw the line between separate groups. By defining 4 equivalency classes, I was able to create distinct and meaningful groups of lawyers based on their relationships in seeking advice. This helped to identify the lawyers who are seen as sources of advice and expertise, and the relationships between them, providing a more detailed and meaningful understanding of the relationships within the firm.
+
+# Question 2: Compare the various groupings that we have (status, gender, office, practice) with the equivalency classes you define. Identify the vertex attribute that appears to be most closely aligned with the resulting equivalency classes. [1 point]
+
+```{r}
+
+# Load the information about each of the lawyers
+lawyers_info_data <- read.csv("Law_NodeAtt.csv", header = TRUE, as.is = TRUE)
+
+# Convert the cluster plot to a membership vector
+ad_memb <- as.vector(cutree(cluster_plot$cluster, k = 4))
+
+# Load the information about each of the lawyers into an igraph object
+net_ad <- graph_from_data_frame(lawyers_advice_data)
+V(net_ad)$Status <- lawyers_info_data$Status
+V(net_ad)$Gender <- lawyers_info_data$Gender
+V(net_ad)$Office <- lawyers_info_data$Office
+V(net_ad)$Practice <- lawyers_info_data$Practice
+V(net_ad)$Seniority <- lawyers_info_data$Seniority
+V(net_ad)$Age<- lawyers_info_data$Age
+V(net_ad)$LawSchool <- lawyers_info_data$LawSchool
+
+# Compare the equivalency classes to the various groupings
+compare_status <- compare(ad_memb, V(net_ad)$Status[1:70], method = "nmi")
+compare_gender <- compare(ad_memb, V(net_ad)$Gender[1:70], method = "nmi")
+compare_office <- compare(ad_memb, V(net_ad)$Office[1:70], method = "nmi")
+compare_practice <- compare(ad_memb, V(net_ad)$Practice[1:70], method = "nmi")
+compare_seniority <- compare(ad_memb, V(net_ad)$Seniority[1:70], method = "nmi")
+compare_age <- compare(ad_memb, V(net_ad)$Age[1:70], method = "nmi")
+compare_lawSchool <- compare(ad_memb, V(net_ad)$LawSchool[1:70], method = "nmi")
+
+# Identify the vertex attribute that appears to be most closely aligned with the resulting equivalency classes
+max_comparison <- max(compare_status, compare_gender, compare_office, compare_practice)
+if (max_comparison == compare_status) {
+  print("Status is most closely aligned")
+} else if (max_comparison == compare_gender) {
+  print("Gender is most closely aligned")
+} else if (max_comparison == compare_office) {
+  print("Office is most closely aligned")
+} else if (max_comparison == compare_practice) {
+  print("Practice is most closely aligned")
+} else if (max_comparison == compare_seniority) {
+  print("Seniority is most closely aligned")
+} else if (max_comparison == compare_age) {
+  print("Age is most closely aligned")
+} else if (max_comparison == compare_lawSchool) {
+  print("Law School is most closely aligned")
+}
+
+```
+
+# Question 3: Plot the advice network twice - once with nodes coloured by their equivalency class membership and once with nodes coloured by the vertex attribute that you have identified. Make sure that the layout stays consistent between the two plots to facilitate comparison. [2 points]
+```{r}
+fr_all <- layout.fruchterman.reingold(net_ad)
+
+classes <- unique(ad_memb)
+
+# Plot the network with nodes colored by regular equivalency class membership
+set.seed(1)
+plot(net_ad, 
+     vertex.color = ad_memb,
+     vertex.label = NA,
+     layout = fr_all,
+     vertex.size = 5,
+     edge.arrow.size = 0.15,
+     edge.width = 0.3,
+     edge.curved = 0.3,
+     main = "Network with nodes colored by regular equivalency class membership")
+
+legend("topright",
+       legend = classes,
+       pch = 19,
+       col = categorical_pal(4)[c(1:4)],
+       cex = 0.7)
+
+# Plot the network with nodes colored by status
+set.seed(1)
+plot(net_ad, 
+     vertex.color = V(net_ad)$Status,
+     vertex.label = NA,
+     layout = fr_all,
+     vertex.size = 5,
+     edge.arrow.size = 0.15,
+     edge.width = 0.3,
+     edge.curved = 0.3,
+     main = "Network with nodes colored by status")
+
+legend("topright",
+       legend = c("Partner (a more senior position)", "Associate (a more junior position)"),
+       pch = 19,
+       col = categorical_pal(2)[c(1:2)],
+       cex = 0.7)
+
+```
+
+# Question 4: Discuss what these results imply about the nature of advice-giving among the lawyers and the roles that the lawyers occupy in the firm. You may want to draw in additional information to explore/illustrate. [5 points]
+
+The comparison of the regular equivalency classes and the vertex attribute "Status" provides insight into the nature of advice-giving among the lawyers and the roles they occupy in the firm. It suggests that the advice network is structured by the lawyers' positions within the firm to some extent, but other factors such as expertise and gender also play a role. Partners are more likely to ask each other for advice, which may be due to their expertise and knowledge. Associates also ask other associates for advice, but they also seek advice from partners, albeit to a lesser extent. This suggests that the lawyers in the firm have a bottom-up approach when it comes to asking for advice. However, it is important to note that within associates and partners there are different levels of each. For example, within associates there will be junior associates and senior associates and maybe even managers. From the two networks we have, we cant tell what level they are. This means, the associates who go to partners for advice and visa versa might be senior associates and/or managers. This could suggest the lawyers in the firm have a bottom up approach when it comes to asking for advice. Bourdieu's theory of social capital can be applied to the finding that partners are more likely to be sought out for advice than associates. According to Bourdieu, social capital refers to the resources that an individual has access to as a result of their social networks (Bourdieu, 1986). In the context of the law firm, partners have more social capital than associates because they have built up more extensive networks and have greater access to resources such as clients and other legal professionals. This makes them more valuable to other lawyers in the firm who may seek their advice.
+
+When looking at the regular equivalency class membership and correlating this with the status attribute data, some associates are in the same regular equivalency class as partners. One theory that could be used to explain this in a social network is Granovetter's theory of weak ties. Granovetter argues that weak ties (i.e., less close relationships) can be more valuable for accessing new information and resources because they provide access to a broader range of social networks (Granovetter, 1973). In the context of the law firm, associates who are in the same regular equivalency class as partners may have weaker ties to those partners than other associates, but they may still be able to access new information and resources through those weak ties. This means that even though partners may have more social capital and be more likely to be sought out for advice, associates who have weaker ties to partners may still be valuable for accessing new information and resources.
+
+```{r}
+
+# Plot the network with nodes colored by practice
+set.seed(1)
+plot(net_ad, 
+     vertex.color = V(net_ad)$Practice,
+     vertex.label = NA,
+     layout = fr_all,
+     vertex.size = 5,
+     edge.arrow.size = 0.15,
+     edge.width = 0.3,
+     edge.curved = 0.3,
+     main = "Network with nodes colored by practice")
+
+legend("topright",
+       legend = c("Litigation", "Corporate"),
+       pch = 19,
+       col = categorical_pal(2)[c(1:2)],
+       cex = 0.7)
+
+```
+
+Another explanation for this discrepancy is the existence of different practices within the firm may influence the advice network. Lawyers who specialise in different areas of law may have different networks of colleagues and clients, and therefore give advice to different people. However, although there isn't obvious clustering from the networks we have, there are small groupings dependent on what they practice. Lin's theory of social capital can also be applied to the finding that lawyers who specialise in different areas of law may have different networks of colleagues and clients. Lin argues that the amount of social capital an individual has is dependent on the structure of their social networks (Lin, 2001). Lawyers who specialise in different areas of law are likely to have different network structures because they will have different sets of clients and colleagues. This means that their social capital may be different, and they may be more valuable to certain colleagues as a result of the specific social networks they have built.
+
+
+```{r}
+# Plot the network with nodes colored by gender
+set.seed(1)
+plot(net_ad, 
+     vertex.color = V(net_ad)$Gender,
+     vertex.label = NA,
+     layout = fr_all,
+     vertex.size = 5,
+     edge.arrow.size = 0.15,
+     edge.width = 0.3,
+     edge.curved = 0.3,
+     main = "Network with nodes colored by gender") 
+  legend("topright",
+       legend = c("Male", "Female"),
+       pch = 19,
+       col = categorical_pal(2)[c(1:2)],
+       cex = 0.7)
+
+```
+
+The gender of the lawyers also appears to play a role in the advice network, with male lawyers being more likely to seek advice from other male colleagues than female. Female lawyers, on the other hand, are more likely to seek advice from both male and female colleagues. This may be due to various factors such as gender bias, the presence of male-dominated practice areas, and the cultural norms of the legal profession. One possible theory is social identity theory, which suggests that individuals identify with certain social groups and derive a sense of self-esteem and identity from their group membership (Hogg, 2016). In the context of the legal profession, gender may be a salient aspect of social identity, and lawyers may be more likely to seek advice from colleagues who share their gender identity. This could be because they feel more comfortable and have a greater sense of trust and shared experience with same-gender colleagues.
+
+In terms of the roles that the lawyers occupy in the firm, the analysis suggests that partners have a significant influence on the advice network, as they are more likely to be sought out for advice. Associates also play a role in the advice network, but to a lesser extent than partners. The analysis also suggests that there may be subgroups within associates and partners based on their level of seniority or specialty, which would be interesting to explore further.
+
+
+# References 
+
+Bourdieu, P. (1986). The forms of capital. In J. G. Richardson (Ed.), Handbook of theory and research for the sociology of education (pp. 239–258). Westport, CT: Greenwood Press.
+
+Granovetter, M.S., 1973. The strength of weak ties. American journal of sociology, 78(6), pp.1360-1380.
+
+Hogg, M.A., 2016. Social identity theory (pp. 3-17). Springer International Publishing.
+
+Lin, N. (2001). Building a network theory of social capital. In N. Lin, K. S. Cook, & R. S. Burt (Eds.), Social capital: theory and research (pp. 3–30). New York: Aldine de Gruyter.

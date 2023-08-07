@@ -1,0 +1,165 @@
+## MY461 Social Network Analysis - Assignment 4
+
+
+
+```{r}
+# Load in packages 
+library(igraph)
+library(scales)
+```
+
+**Question 1: Create two networks: one representing the jury vote and one representing the televote (i.e., the popular vote), with the count variable included as an edge attribute. Add the variables in the metadata file as node attributes. [We are providing you with code that accomplishes this, 0 points]**
+
+```{r}
+
+meta <- read.csv("meta_eurovision.csv", header = TRUE, as.is = TRUE, stringsAsFactors = FALSE)
+
+euro_tele <- read.csv("euro_televoting_count_16-22.csv", header = TRUE, as.is = TRUE, stringsAsFactors = FALSE)
+
+euro_jury <- read.csv("euro_jury_count_16-22.csv", header = TRUE, as.is = TRUE, stringsAsFactors = FALSE)
+
+net_tele <- graph_from_data_frame(euro_tele, directed = TRUE)
+
+net_jury <- graph_from_data_frame(euro_jury, directed = TRUE)
+
+## creating a new dataframe to which we can append the metadata, appropriately aligned with the order of the nodes in the networks
+df <- data.frame(Country = V(net_tele)$name) 
+df <- merge(df, meta, by = "Country", sort = FALSE)
+
+## again creating the networks, this time adding all node attributes through the "vertices" element 
+net_tele <- graph_from_data_frame(euro_tele, vertices = df)
+net_jury <- graph_from_data_frame(euro_jury, vertices = df)
+
+```
+
+**Question 2: Plot the televote and jury networks. Size edges based on the “count” variable. Size nodes by in-strength centrality (using strength(), and using the “count” edge attribute as your edge weight). Colour nodes using the Region variable. Position nodes based on the latitude and longitude of their capital cities (using layout = as.matrix(cbind(df$capital.lon, df$capital.lat)) when plotting). Make sure the plots are legible and informative. [1 point]**
+
+```{r}
+# Set seed for reproducibility
+set.seed(123)
+
+# Set edge and node attributes
+E(net_tele)$Count <- euro_tele$Count
+E(net_jury)$Count <- euro_jury$Count
+
+# Size nodes by in-strength centrality using “count” edge attribute as edge weight
+V(net_tele)$size <- strength(net_tele, mode="in", weights=E(net_tele)$count) 
+V(net_jury)$size <- strength(net_jury, mode="in", weights=E(net_jury)$count) 
+
+df$Region_int <- match(df$Region, unique(df$Region))
+
+# Plot televote network
+plot(net_tele, 
+     vertex.color = df$Region_int, 
+     vertex.label = NA, 
+     vertex.size = V(net_tele)$size, 
+     edge.width = E(net_tele)$count/2, 
+     edge.arrow.size = 0.2,
+     layout = as.matrix(cbind(df$capital.lon, df$capital.lat)), 
+     main = "Televote Network")
+legend("topright",
+       legend = c("Southern Europe" ,"Western Asia" ,"Western Europe" ,"Eastern Europe", "Northern Europe"),
+       pch = 19,
+       col = categorical_pal(5)[c(1:5)],
+       cex = 0.7)
+
+# Plot jury network
+plot(net_jury, 
+     vertex.color = df$Region_int, 
+     vertex.label = NA, 
+     vertex.size = V(net_jury)$size, 
+     edge.width = E(net_jury)$count/2, 
+     edge.arrow.size = 0.2,
+     layout = as.matrix(cbind(df$capital.lon, df$capital.lat)), 
+     main = "Jury Network")
+legend("topright",
+       legend = c("Southern Europe" ,"Western Asia" ,"Western Europe" ,"Eastern Europe", "Northern Europe"),
+       pch = 19,
+       col = categorical_pal(5)[c(1:5)],
+       cex = 0.7)
+
+
+```
+
+**Question 3: Calculate the reciprocity and (global) transitivity of the televote and jury networks. Report the values in prose to show your understanding of each measure. How do the jury and televote networks compare? What do these measures suggest about voting patterns in Eurovision? [3 points]**
+
+```{R}
+
+## Reciprocity
+cat("The reciprocity for the jury network is:", reciprocity(net_jury), "\n")
+cat("The reciprocity for the televote network is:", reciprocity(net_tele), "\n")
+
+## Transitivity
+cat("The global transitivity for the jury network is:", transitivity(net_jury, type = "global"), "\n")
+cat("The global transitivity for the televote network is:", transitivity(net_tele, type = "global"), "\n")
+
+
+```
+The reciprocity function calculates the the extent to which pairs of nodes in a network reciprocate each others edges. A value of 0 indicates that there is no reciprocity, while a value of 1 indicates perfect reciprocity (Szell,Lambiotte, and Thurner, 2010). The reciprocity value for the jury network is 0.1929, indicating that there is some degree of reciprocity in the voting patterns. The reciprocity value for the televote network is slightly higher at 0.2775, indicating that there is slightly more reciprocity in the televote network compared to the jury network.
+
+The transitivity function calculates the global transitivity of each network, which is a measure of how often nodes in the network form triangles of mutual connections. A value of 0 indicates that there is no transitivity, while a value of 1 indicates perfect transitivity (Carpenter, Esterling, and Lazer, 2004). The global transitivity value for the jury network is 0.2442, indicating that there is some degree of clustering in the network, but it is not very high. The global transitivity value for the televote network is slightly higher at 0.3075, indicating that there is slightly more clustering in the televote network compared to the jury network.
+
+These measures suggest that there are some patterns in the voting behavior in Eurovision, but they are not very strong. The reciprocity values indicate that there is some degree of mutual voting between countries, but this is not very common. The transitivity values indicate that there is some clustering in the network, but this is also not very strong. Overall, these measures suggest that the voting patterns in Eurovision are somewhat complex and cannot be easily explained by simple patterns of mutual voting or clustering.
+
+**Question 4: Do countries seem to prefer to award the top points to countries that are similar to them in any way? Calculate assortativity by region, per capita GDP, and population for the televote and jury networks. What do these results imply about countries’ song preferences? Do countries’ jury and public votes follow similar patterns? [3 points]**
+
+```{r}
+
+## again creating the networks, this time adding all node attributes through the "vertices" element 
+net_tele <- graph_from_data_frame(euro_tele, vertices = df)
+net_jury <- graph_from_data_frame(euro_jury, vertices = df)
+
+# Calculate assortativity by region, per capita GDP, and population for the televote network
+assortativity_region_tele <- assortativity(net_tele, V(net_tele)$Region_int)
+assortativity_gdp_tele <- assortativity(net_tele, V(net_tele)$GDP.per.capita)
+assortativity_pop_tele <- assortativity(net_tele, V(net_tele)$Population2010.OECD.estimate)
+
+# Calculate assortativity by region, per capita GDP, and population for the jury network
+assortativity_region_jury <- assortativity(net_jury, V(net_jury)$Region_int)
+assortativity_gdp_jury <- assortativity(net_jury, V(net_jury)$GDP.per.capita)
+assortativity_pop_jury <- assortativity(net_jury, V(net_jury)$Population2010.OECD.estimate)
+
+cat("The assortativity by region for the televote network is:", assortativity_region_tele, "\n")
+cat("The assortativity by per capita GDP for the televote network is:", assortativity_gdp_tele, "\n")
+cat("The assortativity by population for the televote network is:", assortativity_pop_tele, "\n")
+cat("\n")
+cat("The assortativity by region for the jury network is:", assortativity_region_jury, "\n")
+cat("The assortativity by per capita GDP for the jury network is:", assortativity_gdp_jury, "\n")
+cat("The assortativity by population for the jury network is:", assortativity_pop_jury, "\n")
+
+```
+The assortativity function returns a value between -1 and 1, where a value of 1 indicates perfect assortativity, meaning nodes are only connected to other nodes with the same attribute value. A value of 0 indicates random mixing, and a value of -1 indicates disassortativity, meaning nodes are only connected to nodes with different attribute values (Power, 2023).
+
+The assortativity results suggest that in the televote network, countries tend to award points to other countries in the same region, with a relatively high assortativity coefficient of 0.4595. This implies that countries in the Eurovision tend to vote more for their neighbors or countries with similar cultural backgrounds. In contrast, the assortativity by region for the jury network is quite low at 0.0528, which suggests that the juries' votes are less influenced by regional preferences. This is also seen in the networks plotted above where there arent many overlapping edges in the televote network when compared to the jury network supporting the idea that juries' votes are less influenced by regional preferences.
+
+The assortativity by per capita GDP is positive in both networks, which suggests that richer countries tend to vote for each other more frequently. However, the magnitude of the coefficients is relatively small, indicating that the effect is not very strong. The assortativity by population is negative in both networks, which suggests that countries tend to vote for smaller countries more often. This may be due to a variety of factors, such as sympathy for the underdog or a desire to promote diversity in the competition.
+
+One limitation of these assortativity measures is that they only capture the association between nodes based on a single attribute, whereas in reality, there are likely many factors that influence how countries vote in Eurovision such as historical alliances, political tensions, and musical genres could all play a role in voting patterns. 
+
+**Question 5: Consider our calculations of reciprocity, transitivity, and assortativity. What might these measures be missing or misrepresenting, either on the basis of how the calculations were done, or how the networks were constructed? If you identify any issues, what would you propose doing to resolve this? [3 points]**
+
+The calculations of reciprocity, transitivity, and assortativity can provide insights into the structure of the Eurovision networks and potential patterns of behavior. 
+
+In terms of social network theory, reciprocity measures the degree to which pairs of nodes reciprocate links, indicating the extent to which countries vote for each other. The jury network had a reciprocity of 0.1928934, meaning that there is some tendency for countries to reciprocate votes, but it is not as strong as in the televote network, which had a reciprocity of 0.2774566. This may suggest that the public tends to vote for countries that they feel are similar to their own, whereas the jury tends to be more objective and not as influenced by cultural or geographic ties.
+
+Transitivity measures the degree to which nodes in a network tend to cluster together, indicating the presence of triads or closed triangles. The global transitivity for the jury network was 0.244186, while the televote network had a global transitivity of 0.3074671. This suggests that there is a moderate level of clustering in both networks, which could be due to shared cultural or geographic ties or strategic voting. 
+
+Assortativity measures the tendency of nodes to connect to other nodes with similar attributes, such as region, per capita GDP, or population. In the televote network, we found that countries tended to vote for others in their region, while the jury network had a weak tendency for countries to vote for others with similar per capita GDP. These results could indicate that cultural or economic similarities play a role in how countries vote, but it is also possible that these patterns are influenced by political or strategic factors, such as alliances or bloc voting.
+
+However, it is important to keep in mind that the measures used have their limitations and do not capture the full complexity of the Eurovision voting system. For example, the use of a one-dimensional ranking system for voting means that the strength of the ties between countries may not be fully represented, and strategic voting or political factors may play a role in determining how countries vote. Additionally, the structure of the Eurovision network changes each year based on the participating countries, making it difficult to draw firm conclusions about overall patterns.
+
+In terms of European politics, the Eurovision Song Contest has been the subject of controversy over the years, with accusations of political bias or bloc voting. The assortativity measures I calculated by region and per capita GDP suggest that there may be some truth to these claims, as countries tend to vote for others in their region or with similar economic attributes and this is also seen in the televote networks where there are mostly edges to neighbouring countries. However, it is important to note that there may be other factors at play, such as cultural or linguistic ties, or differences in taste in music. 
+
+In terms of talent show politics, the Eurovision Song Contest is unique in that it is a combination of a music competition and a talent show, with the public and jury voting for their favorite songs. The differences we observed between the jury network and televote network could be indicative of a tension between these two elements, with the public favoring more culturally similar or popular songs, while the jury prioritizes technical ability and originality. 
+
+To address some of these issues, it may be useful move away from a one-dimensional ranking system and incorporate additional measures or data sources, such as historical voting patterns, political or cultural relationships between countries, or other factors that may influence the Eurovision voting networks. In addition, one way to address accusations of bias or strategic voting is to increase transparency in the voting process. This could involve providing more detailed explanations of how the jury and televote scores are calculated, or introducing measures to ensure that voting is fair and free from political influence.
+
+**References**
+
+Carpenter, D.P., Esterling, K.M. and Lazer, D.M., 2004. Friends, brokers, and transitivity: Who informs whom in Washington politics?. The journal of Politics, 66(1), pp.224-246.
+
+Power, E 2023, Lecture 5: Properties of dyads and triads: Mutuality, transitivity, balance, lecture notes, MY461 Social Network Analysis, London School of Economics, delivered 15 February 2023.
+
+Szell, M., Lambiotte, R. and Thurner, S., 2010. Multirelational organization of large-scale social networks in an online world. Proceedings of the National Academy of Sciences, 107(31), pp.13636-13641.
+
+
