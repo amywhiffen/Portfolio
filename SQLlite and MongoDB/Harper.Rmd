@@ -1,0 +1,228 @@
+
+*Load in packages*
+
+```{r}
+
+library(dplyr)
+library(readxl)
+library(ggplot2)
+library(tidyr)
+library(kableExtra)
+
+```
+
+*CLEAN DATA*
+
+```{r}
+
+file_path <- "/Users/amywhiffen/Library/Mobile Documents/com~apple~CloudDocs/Documents/Copy of Case Mock Dataset.xlsx"
+
+data <- read_excel(file_path)
+
+final_data <- data %>%
+  separate("Order Month - Brand Name", c("Order Month", "Brand Name", "Product Type"), sep = " ", remove = FALSE) %>%
+  select(-"Order Month - Brand Name") %>%
+  mutate(
+    `Items Returned` = `Gross Order Units (The number of units they are trying on)` - `Net Order Units (What they decided to purchase)`,
+    `Return Rate (%)` = round((`Items Returned` / `Gross Order Units (The number of units they are trying on)`) * 100, 0)
+  )
+
+kable(final_data)
+
+```
+
+
+# Insight 1: Return Rates are higher for Unique (Dresses)
+
+```{r}
+
+return_rates_brand <- final_data %>%
+  group_by(`Brand Name`,`Product Type`) %>%
+  summarize(
+    Average_Return_Rate = round(mean(`Return Rate (%)`), 0)
+  )
+
+return_rates_plot <- ggplot(return_rates_brand, aes(x = `Brand Name`, y = Average_Return_Rate, fill = `Product Type`)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Return Rates by Brand Name and Product Type",
+       x = "Brand Name",
+       y = "Return Rate",
+       subtitle = "Lovely Outfits vs. Unique Dresses") +
+  theme_minimal() +
+  theme(
+    text = element_text(family = "Times New Roman", face = "bold", size = 12),  
+    axis.title = element_text(face = "bold"),  
+    axis.text = element_text(face = "bold")
+  ) +
+  scale_fill_manual(values = c("cornsilk3", "antiquewhite4"), name = "Brand", labels = c("Unique Dresses", "Lovely Outfits")) +
+  ylim(0, 100) +
+  geom_text(aes(label = paste0(Average_Return_Rate, "%")), vjust = -0.5, size = 3)
+
+# Print the plot
+print(return_rates_plot)
+
+
+```
+
+# Insight 2: Return Rates Increase in September
+
+```{r}
+
+
+return_rates_month <- final_data %>%
+  group_by(`Order Month`, `Brand Name`,`Product Type`, ) %>%
+  summarize(
+    Average_Return_Rate = round(mean(`Return Rate (%)`, na.rm = TRUE), 0)
+  )
+
+return_month_plot <- ggplot(return_rates_month, aes(x = factor(`Order Month`), y = Average_Return_Rate, fill = `Brand Name`)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  labs(title = "Return Rates Across Months, Brands, and Product Types",
+       x = "Order Month",
+       y = "Return Rate",
+       subtitle = "Lovely Outfits vs. Unique Dresses") +
+  theme_minimal() +
+  theme(
+    text = element_text(family = "Times New Roman", face = "bold", size = 12),  
+    axis.title = element_text(face = "bold"),  
+    axis.text = element_text(face = "bold")
+  ) +
+  scale_fill_manual(values = c("cornsilk3", "antiquewhite4"), name = "Brand Name", labels = c("Lovely Outfits", "Unique Dresses")) +
+  ylim(0, 100) +  
+  geom_text(aes(label = paste0(Average_Return_Rate, "%")), vjust = -1.5, size = 3, position = position_dodge(width = 0.9)) +
+  annotate("text", x = 2, y = 85, label = "Return Rates Decrease in September", color = "black", hjust = 0)
+
+return_month_plot
+
+
+```
+
+# Insight 3: Return Rates Increase with Number of Previous Orders
+
+```{r}
+
+return_rates_previous_orders <- final_data %>%
+  group_by(`Customer Previous Orders`, `Brand Name`,`Product Type`) %>%
+  summarize(
+    Average_Return_Rate = round(mean(`Return Rate (%)`, na.rm = TRUE), 0)
+  )
+
+return_rates_previous_orders_plot_brand <- ggplot(return_rates_previous_orders, aes(x = factor(`Customer Previous Orders`), y = Average_Return_Rate, fill = `Brand Name`)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black", na.rm = TRUE) +
+  labs(title = "Return Rates by Customer Previous Orders and Brand",
+       x = "Customer Previous Orders",
+       y = "Return Rate") +
+  theme_minimal() +
+  theme(
+    text = element_text(family = "Times New Roman", face = "bold", size = 12),
+    axis.title = element_text(face = "bold"),
+    axis.text = element_text(face = "bold")
+  ) +
+  scale_fill_manual(values = c("cornsilk3", "antiquewhite4"), name = "Brand Name", labels = c("Lovely Outfits", "Unique Dresses")) +
+  ylim(0, 100) +
+  geom_text(data = return_rates_previous_orders %>% filter(!is.na(Average_Return_Rate) & Average_Return_Rate > 0),
+            aes(label = scales::percent(Average_Return_Rate / 100)),
+            position = position_dodge(0.9), vjust = -0.5, size = 3) +
+  facet_wrap(~`Brand Name`)
+
+print(return_rates_previous_orders_plot_brand)
+
+
+average_return_rates <- return_rates_previous_orders %>%
+  group_by(`Customer Previous Orders`) %>%
+  summarize(Average_Return_Rate = mean(Average_Return_Rate, na.rm = TRUE))
+
+# Plot for Average Return Rates by Customer Previous Orders
+average_return_rates_plot <- ggplot(average_return_rates, aes(x = factor(`Customer Previous Orders`), y = Average_Return_Rate)) +
+  geom_bar(stat = "identity", fill = "antiquewhite3", color = "black") +
+  labs(title = "Average Return Rates by Customer Previous Orders",
+       x = "Customer Previous Orders",
+       y = "Average Return Rate") +
+  theme_minimal() +
+  theme(
+    text = element_text(family = "Times New Roman", face = "bold", size = 12),
+    axis.title = element_text(face = "bold"),
+    axis.text = element_text(face = "bold")
+  ) +
+  ylim(0, 100) +
+  geom_text(aes(label = paste0(Average_Return_Rate, "%")), vjust = -1.5, size = 3, position = position_dodge(width = 0.9))
+
+print(average_return_rates_plot)
+
+
+```
+
+
+
+
+# Infomation on returns time 
+
+```{r}
+
+factors_analysis <- final_data %>%
+  group_by(`Brand Name`) %>%  # Updated to use the new column name
+  summarize(
+    AvgGrossOrderUnits = mean(`Gross Order Units (The number of units they are trying on)`),
+    AvgNetOrderUnits = mean(`Net Order Units (What they decided to purchase)`),
+    AvgGrossOrderValue = mean(`Gross Order Value (The value of what they ordered)`),
+    AvgDaysToReturn = mean(`Days from order to warehouse returned`)
+  )
+
+factors_analysis
+
+```
+
+```{r}
+
+bar_plot <- ggplot(factors_analysis, aes(x = `Brand Name`, y = AvgDaysToReturn, fill = `Brand Name`)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  geom_segment(aes(x = `Brand Name`, xend = `Brand Name`, y = AvgDaysToReturn, yend = 15), color = "black", size = 1, linetype = "dashed") +  # Add vertical lines
+  labs(title = "Days from Order to Warehouse Returned",
+       x = "Brand",
+       y = "Days") +
+  theme_minimal() +
+  theme(text = element_text(family = "Times New Roman", face = "bold", size = 12),  
+        axis.title = element_text(face = "bold"), 
+        axis.text = element_text(face = "bold")) +  
+  ylim(0, 20) +  # Set Y-axis limits
+  geom_hline(yintercept = 15, linetype = "dashed", color = "red") +
+  scale_fill_manual(values = c("cornsilk3", "antiquewhite4"), name = "Brand Name", labels = c("Lovely", "Unique")) +  
+  annotate("text", x = 1.5, y = 16, label = "Normal online return c. 15 days", color = "red", hjust = 0) +
+  annotate("text", x = 1.3, y = 9, label = paste0("Reduction of: ", scales::percent((15 - factors_analysis$AvgDaysToReturn[1]) / 15)), color = "black") + 
+  annotate("text", x = 2.3, y = 9, label = paste0("Reduction of: ", scales::percent((15 - factors_analysis$AvgDaysToReturn[2]) / 15)), color = "black") 
+
+bar_plot
+
+
+```
+
+```{r}
+
+
+average_values <- final_data %>%
+  group_by(`Order Month`, `Brand Name`) %>%
+  summarize(Avg_Net_Order_Value = round(mean(`Net Order Value (The value of what they purchased)`), 0))
+
+seasonal_trends_bar_plot <- ggplot(average_values, aes(x = `Order Month`, y = Avg_Net_Order_Value, fill = `Brand Name`)) +
+  geom_bar(stat = "identity", position = "dodge", color = "black") +
+  geom_text(aes(label = paste0("£", Avg_Net_Order_Value)), 
+            position = position_dodge(width = 0.9), vjust = -0.5, size = 3) +
+  labs(title = "Average Net Order Values by Brand and Month",
+       x = "Order Month",
+       y = "Average Net Order Value (£)",
+       fill = "Brand Name") +
+  theme_minimal() +
+  theme(
+    text = element_text(family = "Times New Roman", face = "bold", size = 12),  
+    axis.title = element_text(face = "bold"), 
+    axis.text = element_text(face = "bold")
+  ) +
+  scale_fill_manual(values = c("cornsilk3", "antiquewhite4"), name = "Brand Name", labels = c("Lovely Outfits", "Unique Dresses"))
+
+print(seasonal_trends_bar_plot)
+
+```
+
+
+
+
